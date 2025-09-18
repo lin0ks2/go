@@ -268,12 +268,23 @@
   // answers
   function onChoice(btn, correct) {
     const w = current();
-    const cur = App.clamp(App.state.stars[w.id] || 0, 0, App.Trainer.starsMax());
+    let cur;
+    if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) {
+      const dk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(w.id) : null);
+      cur = dk ? (App.Mistakes.progress.getStars(dk, w.id) || 0) : 0;
+    } else {
+      cur = App.clamp(App.state.stars[w.id] || 0, 0, App.Trainer.starsMax());
+    }
 
     if (correct) {
       btn.classList.add('correct');
       D.optionsRow.querySelectorAll('button.optionBtn').forEach(b => b.disabled = true);
+      if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) {
+      const dk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(w.id) : null);
+      if (dk) App.Mistakes.progress.setStars(dk, w.id, Math.min(cur + 1, App.Trainer.starsMax()));
+    } else {
       App.state.stars[w.id] = App.clamp(cur + 1, 0, App.Trainer.starsMax());
+    }
       App.state.successes[w.id] = (App.state.successes[w.id] || 0) + 1;
       App.saveState();
       try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
@@ -298,7 +309,12 @@
     // wrong
     btn.classList.add('wrong');
     btn.disabled = true;
-    App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
+    if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) {
+      const dk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(w.id) : null);
+      if (dk) App.Mistakes.progress.setStars(dk, w.id, Math.max(cur - 1, 0));
+    } else {
+      App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
+    }
     App.state.totals.errors += 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
     // ⛔️ отключаем бейдж за ошибки — оставляем только добавление в "Мои ошибки"
@@ -315,8 +331,19 @@
     const c = D.optionsRow.querySelector('button.optionBtn[data-correct="1"]');
     if (c) c.classList.add('correct');
     D.optionsRow.querySelectorAll('button.optionBtn').forEach(b => b.disabled = true);
-    const cur = App.clamp(App.state.stars[w.id] || 0, 0, App.Trainer.starsMax());
-    App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
+    let cur;
+    if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) {
+      const dk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(w.id) : null);
+      cur = dk ? (App.Mistakes.progress.getStars(dk, w.id) || 0) : 0;
+    } else {
+      cur = App.clamp(App.state.stars[w.id] || 0, 0, App.Trainer.starsMax());
+    }
+    if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) {
+      const dk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(w.id) : null);
+      if (dk) App.Mistakes.progress.setStars(dk, w.id, Math.max(cur - 1, 0));
+    } else {
+      App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
+    }
     App.state.totals.errors += 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
     // ⛔️ отключаем бейдж за ошибки
@@ -819,3 +846,88 @@
 
   try{ App.renderCard = renderCard; App.renderSetStats = renderSetStats; }catch(e){}
 })();
+
+function updateStats(){
+  const t = App.i18n ? App.i18n() : { totalWords: 'Всего слов', learned: 'Выучено' };
+  const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+
+  let total = 0, learned = 0;
+  const repeats = (App.Trainer && typeof App.Trainer.starsMax === 'function')
+    ? App.Trainer.starsMax()
+    : ((App.state && App.state.repeats) || 3);
+
+  if (key === 'mistakes' && App.Mistakes){
+    const deck = App.Mistakes.deck() || [];
+    total = deck.length;
+    for (let i=0;i<deck.length;i++){
+      const w = deck[i];
+      const dk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(w.id) : null);
+      if (dk && App.Mistakes.progress.isLearned(dk, w.id)) learned++;
+    }
+  } else {
+    const fullDeck = (App.Decks && App.Decks.resolveDeckByKey)
+      ? (App.Decks.resolveDeckByKey(key) || [])
+      : [];
+    const starsMap = (App.state && App.state.stars) || {};
+    total = fullDeck.length;
+    for (let i = 0; i < fullDeck.length; i++){
+      if ((starsMap[fullDeck[i].id] || 0) >= repeats) learned++;
+    }
+  }
+
+  if (App.DOM && App.DOM.statsBar) {
+    App.DOM.statsBar.textContent = (t.totalWords || 'Всего слов') + ': ' + total + ' / ' + (t.learned || 'Выучено') + ': ' + learned;
+  }
+}
+
+
+function getMistakesDistractorPool(currentWord){
+  const pool = [];
+  function push(x){ if (x) pool.push(x); }
+
+  if (App.Mistakes && typeof App.Mistakes.list === 'function') {
+    const arr = App.Mistakes.list() || [];
+    for (let i = 0; i < arr.length; i++) {
+      const e  = arr[i];
+      const dk = e && (e.dictKey || e._mistakeSourceKey);
+      const id = e && String(e.id);
+      if (!dk || !id) continue;
+
+      const d = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(dk) || []) : [];
+      for (let j = 0; j < d.length; j++){
+        if (String(d[j].id) === id) { push(d[j]); break; }
+      }
+    }
+  }
+
+  if (currentWord){
+    for (let k = pool.length - 1; k >= 0; k--){
+      if (String(pool[k].id) === String(currentWord.id)) pool.splice(k,1);
+    }
+  }
+  return pool;
+}
+
+
+function renderStars() {
+  const w = current();
+  try { if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) App.Mistakes.onShow(w.id); } catch (e) {}
+  const max = App.Trainer.starsMax();
+  let score = 0;
+  if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) {
+    const dk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(w.id) : null);
+    score = dk ? (App.Mistakes.progress.getStars(dk, w.id) || 0) : 0;
+  } else {
+    score = App.clamp(App.state.stars[w.id] || 0, 0, max);
+  }
+  const host = D.starsEl;
+  if (!host) return;
+  host.innerHTML = '';
+  for (let i = 0; i < max; i++) {
+    const s = document.createElement('span');
+    s.className = 'star' + (i < score ? ' filled' : '');
+    s.textContent = '★';
+    host.appendChild(s);
+  }
+}
+
