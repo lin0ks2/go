@@ -108,7 +108,7 @@
     return MAP[lg] || '🌐';
   }
 
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',\"'\":'&#39;' }[c]; }); }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
   function openPreview(words, title){
     var t = (typeof App.i18n === 'function') ? App.i18n() : { pos_misc:'Слова' };
     var tr = (App.settings.lang === 'ru') ? 'ru' : 'uk';
