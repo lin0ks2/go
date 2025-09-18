@@ -5,11 +5,10 @@ window.decks = window.decks || {};
 
 // === ES_VERBS ===
 // Пример добавления записи:
-// window.decks.es_verbs = [
-//   { id: 1, word: "hablar", uk: "говорити", ru: "говорить" },
-//   { id: 2, word: "comer",  uk: "їсти",     ru: "есть" }
-// ];
-window.decks.es_verbs = [];
+window.decks.es_verbs = [
+  { id: 1, word: "hablar", uk: "говорити", ru: "говорить" },
+  { id: 2, word: "comer",  uk: "їсти",     ru: "есть" }
+ ];
 
 // === ES_NOUNS ===
 // Пример добавления записи:
