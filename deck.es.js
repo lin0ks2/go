@@ -10,7 +10,7 @@ window.decks.es_verbs = [
  ];
 
 // === ES_NOUNS ===
-// window.decks.es_nouns = [
+window.decks.es_nouns = [
  { id: 1, word: "la casa", uk: "дім", ru: "дом" },
  { id: 2, word: "el perro",  uk: "пес",     ru: "пёс" }
  ];
