@@ -1,4 +1,4 @@
-/* ui.options.safe.js — isolates and fixes options-building for trainer */
+/* ui.options.safe.js — safe override for building options (answers) */
 (function(){
   var App = window.App || (window.App = {});
 
@@ -16,7 +16,6 @@
   function resolveDeck(key){
     try{ return (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(key) || []) : []; }catch(e){ return []; }
   }
-
   function mistakesDeck(){
     try{ return (App.Mistakes && App.Mistakes.deck) ? (App.Mistakes.deck() || []) : []; }catch(e){ return []; }
   }
@@ -31,25 +30,22 @@
     var options = [];
     var used = new Set();
 
-    // правильный
+    // 1) correct option
     var correctText = labelOf(word) || String(word.word||'').trim();
     uniqPush(options, { id:String(word.id), text: correctText, isCorrect:true }, used);
 
-    // пул из МО (полные карточки)
+    // 2) pool from mistakes (full cards)
     var pool = mistakesDeck().slice();
-    // удалить текущий
     for (var i = pool.length - 1; i >= 0; i--){
       if (String(pool[i].id) === String(word.id)) pool.splice(i,1);
     }
-
-    // сначала из МО
     for (var i=0; i<pool.length && options.length<4; i++){
       var txt = labelOf(pool[i]);
       if (!txt) continue;
       uniqPush(options, { id:String(pool[i].id), text:txt, isCorrect:false }, used);
     }
 
-    // затем добор из того же словаря
+    // 3) top-up from same source deck
     var dk = word._mistakeSourceKey || activeKey();
     var full = resolveDeck(dk);
     for (var j=0; j<full.length && options.length<4; j++){
@@ -58,7 +54,7 @@
       uniqPush(options, { id:String(w.id), text:txt2, isCorrect:false }, used);
     }
 
-    // перемешать
+    // 4) shuffle
     for (var k = options.length - 1; k > 0; k--){
       var m = Math.floor(Math.random()*(k+1));
       var tmp = options[k]; options[k]=options[m]; options[m]=tmp;
@@ -67,18 +63,15 @@
   }
 
   function sanitizeRegular(word, options){
-    // Пройти по готовым опциям: заменить пустые/NaN подписи, удалить дубли, добрать до 4
     var used = new Set();
     var out = [];
 
-    // ensure correct exists
     var correctText = labelOf(word) || String(word.word||'').trim();
     var hasCorrect = false;
 
     function pushOpt(opt){
       var txt = (opt && String(opt.text||'').trim()) || '';
-      if (!txt) return;
-      if (used.has(txt)) return;
+      if (!txt || used.has(txt)) return;
       out.push({ id:String(opt.id||''), text:txt, isCorrect:!!opt.isCorrect });
       used.add(txt);
     }
@@ -88,7 +81,6 @@
         var o = options[i] || {};
         if (o.isCorrect) hasCorrect = true;
         if (!o.text){
-          // попробуем реконструировать
           if (o.isCorrect) o.text = correctText;
           else if (o.word) o.text = labelOf(o.word);
         }
@@ -100,7 +92,7 @@
       pushOpt({ id:String(word.id), text:correctText, isCorrect:true });
     }
 
-    // добор из активного словаря
+    // top-up to 4 from active deck
     var deck = resolveDeck(activeKey());
     for (var j=0; j<deck.length && out.length<4; j++){
       var w = deck[j]; if (String(w.id) === String(word.id)) continue;
@@ -108,32 +100,24 @@
       pushOpt({ id:String(w.id), text:txt, isCorrect:false });
     }
 
-    // если вдруг меньше 4 — дублировать безопасно (не должно случиться, но на всякий)
     while (out.length < 4){
       out.push({ id:'__stub_'+out.length, text: correctText, isCorrect: (out.length===0) });
     }
 
-    // перемешать (сохраняя хотя бы один correct)
-    var cix = out.findIndex(function(o){ return o.isCorrect; });
+    // shuffle (keep at least one correct)
+    var corrIdx = out.findIndex(function(o){ return o.isCorrect; });
     for (var k = out.length - 1; k > 0; k--){
       var m = Math.floor(Math.random()*(k+1));
       var tmp = out[k]; out[k]=out[m]; out[m]=tmp;
     }
-    // гарантируем, что correct не потерян
     if (out.every(function(o){ return !o.isCorrect; })){
       out[0].isCorrect = true;
     }
-
     return out;
   }
 
-  // ---- monkey-patch ----
   function install(){
-    var ak = activeKey();
-    // candidate builders
     var original = null, where = null;
-
-    // list of probes to find existing builder
     var probes = [
       function(){ if (typeof window.buildOptionsFor === 'function') return { obj:window, key:'buildOptionsFor' }; },
       function(){ if (typeof window.buildOptions === 'function') return { obj:window, key:'buildOptions' }; },
@@ -141,14 +125,13 @@
       function(){ if (App && App.Trainer && typeof App.Trainer.buildOptions === 'function') return { obj:App.Trainer, key:'buildOptions' }; },
       function(){ if (App && typeof App.buildOptions === 'function') return { obj:App, key:'buildOptions' }; }
     ];
-
     for (var i=0;i<probes.length;i++){
       var hit = null; try{ hit = probes[i](); }catch(e){}
       if (hit){ original = hit.obj[hit.key]; where = hit; break; }
     }
 
     function wrapper(word){
-      if (activeKey() === 'mistakes'){
+      if ((App.dictRegistry && App.dictRegistry.activeKey) === 'mistakes'){
         return buildOptionsMistakes(word);
       } else {
         var opts = original ? original.call(where.obj, word) : [];
@@ -159,14 +142,20 @@
     if (where){
       where.obj[where.key] = wrapper;
     } else {
-      // если builder не нашли — перехватим рендерер
+      // fallback: wrap renderOptions if builder unknown
       var origRender = null;
-      if (typeof window.renderOptions === 'function'){ origRender = window.renderOptions; window.renderOptions = function(word){ var opts = sanitizeRegular(word, []); return origRender(opts); }; }
+      if (typeof window.renderOptions === 'function'){
+        origRender = window.renderOptions;
+        window.renderOptions = function(word){
+          var opts = sanitizeRegular(word, []);
+          return origRender(opts);
+        };
+      }
     }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', install);
+    document.addEventListener('DOMContentLoaded', function(){ try{ install(); }catch(e){} });
   } else {
     try { install(); } catch(e){}
   }
