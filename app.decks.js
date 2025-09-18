@@ -101,12 +101,10 @@ App.Decks.langOfKey = function(key){
   function nameByKey(key) {
     const map = i18nNameMap();
     if (!key) return map.default;
-    if (key === 'fav' || key === 'favorites') return map.favorites;
-    const canon = normalizeKey(key);
-    return map[canon] || map.default;
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
+    if (key === 'fav' || key === 'favorites'){
+  try{ return (App.Favorites && App.Favorites.deck) ? (App.Favorites.deck() || []) : []; }catch(e){ return []; }
+}
+// ───────────────────────────────────────────────────────────────────────────
   // [БЛОК 3] Доступ к колодам
   // ───────────────────────────────────────────────────────────────────────────
   function builtinKeys(){
@@ -143,7 +141,7 @@ App.Decks.langOfKey = function(key){
 
   function resolveDeckByKey(key){
     
-  if (key === 'mistakes') { try { return (App.Mistakes && App.Mistakes.list) ? (App.Mistakes.deck() || []) : []; } catch(e){ return []; } }
+  if (key === 'mistakes') { try { return (App.Mistakes && App.Mistakes.deck) ? (App.Mistakes.deck() || []) : []; } catch(e){ return []; } } catch(e){ return []; } }
 if (!key) return [];
     // Избранное — «виртуальная» колода
     
