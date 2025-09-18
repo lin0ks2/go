@@ -1,5 +1,6 @@
-/* app.decks.js — clean rewrite
-   Provides:
+/* app.decks.js — clean, compatible rewrite
+   Exposes:
+     App.Decks.langOfKey(key)
      App.Decks.builtinKeys()
      App.Decks.resolveDeckByKey(key)
      App.Decks.resolveNameByKey(key)
@@ -88,17 +89,24 @@
     if (key === 'mistakes') return (t && t.mistakesName) ? t.mistakesName : 'Мои ошибки';
     if (key === 'fav' || key === 'favorites') return (App.settings.lang === 'ru') ? 'Избранное' : 'Обране';
 
-    var mapRU = {
-      de_pronouns:'Местоимения', de_numbers:'Числительные', de_prepositions:'Предлоги', de_conjunctions:'Союзы', de_particles:'Частицы',
-      de_adverbs:'Наречия', de_adjectives:'Прилагательные', de_nouns:'Существительные', de_verbs:'Глаголы'
+    var m = String(key||'').match(/^([a-z]{2})_([a-z]+)$/i);
+    var uiRu = (App.settings.lang === 'ru');
+    var POS_RU = {
+      verbs:'Глаголы', nouns:'Существительные', adjectives:'Прилагательные',
+      adverbs:'Наречия', pronouns:'Местоимения', prepositions:'Предлоги',
+      conjunctions:'Союзы', particles:'Частицы', numbers:'Числительные'
     };
-    var mapUK = {
-      de_pronouns:'Займенники', de_numbers:'Числівники', de_prepositions:'Прийменники', de_conjunctions:'Сполучники', de_particles:'Частки',
-      de_adverbs:'Прислівники', de_adjectives:'Прикметники', de_nouns:'Іменники', de_verbs:'Дієслова'
+    var POS_UK = {
+      verbs:'Дієслова', nouns:'Іменники', adjectives:'Прикметники',
+      adverbs:'Прислівники', pronouns:'Займенники', prepositions:'Прийменники',
+      conjunctions:'Сполучники', particles:'Частки', numbers:'Числівники'
     };
-    var lang = (App.settings.lang === 'ru') ? 'ru' : 'uk';
-    var map = (lang === 'ru') ? mapRU : mapUK;
-    return map[normalizeKey(key)] || (t && t.pos_misc) || 'Слова';
+    if (m) {
+      var pos = m[2].toLowerCase();
+      var POS = uiRu ? POS_RU : POS_UK;
+      if (POS[pos]) return POS[pos];
+    }
+    return uiRu ? 'Словарь' : 'Словник';
   }
 
   function flagForKey(key){
@@ -108,12 +116,16 @@
     return MAP[lg] || '🌐';
   }
 
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
   function openPreview(words, title){
     var t = (typeof App.i18n === 'function') ? App.i18n() : { pos_misc:'Слова' };
     var tr = (App.settings.lang === 'ru') ? 'ru' : 'uk';
     var rows = (words||[]).map(function(w){ return '<tr><td>'+escapeHtml(w.word||'')+'</td><td>'+escapeHtml(w[tr]||'')+'</td></tr>'; }).join('');
-    var html = '<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>'+escapeHtml(title||'')+'</title>'+
+    var html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+escapeHtml(title||'')+'</title>'+
     '<style>body{font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:16px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}thead th{background:#f8fafc}</style>'+
     '</head><body><h3>'+escapeHtml(title||'')+'</h3><table><thead><tr><th>'+(t.pos_misc||'Слова')+'</th><th>'+((tr==='ru')?'Перевод':'Переклад')+'</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>';
     var blob = new Blob([html], {type:'text/html;charset=utf-8;'});
