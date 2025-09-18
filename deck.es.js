@@ -4,19 +4,16 @@
 window.decks = window.decks || {};
 
 // === ES_VERBS ===
-// Пример добавления записи:
 window.decks.es_verbs = [
   { id: 1, word: "hablar", uk: "говорити", ru: "говорить" },
   { id: 2, word: "comer",  uk: "їсти",     ru: "есть" }
  ];
 
 // === ES_NOUNS ===
-// Пример добавления записи:
 // window.decks.es_nouns = [
-//   { id: 1, word: "hablar", uk: "говорити", ru: "говорить" },
-//   { id: 2, word: "comer",  uk: "їсти",     ru: "есть" }
-// ];
-window.decks.es_nouns = [];
+ { id: 1, word: "la casa", uk: "дім", ru: "дом" },
+ { id: 2, word: "el perro",  uk: "пес",     ru: "пёс" }
+ ];
 
 // === ES_ADVERBS ===
 // Пример добавления записи:
