@@ -13,7 +13,7 @@
   function ensureLoaded(lang){
     return new Promise(function(res){
       lang=(lang||'en').toLowerCase();
-      // if already any key for this lang present — ok
+      // already loaded?
       var d=window.decks||{}; for (var k in d){ if (/^[a-z]{2}_/i.test(k) && k.slice(0,2).toLowerCase()===lang) return res(); }
       var s=document.createElement('script'); s.async=true; s.src='deck.'+lang+'.js?v=1';
       s.onload=function(){ res(); }; s.onerror=function(){ console.warn('deck file missing:', s.src); res(); };
@@ -30,6 +30,7 @@
       key = (window.decks && window.decks[fb]) ? fb : (list[0]||fb);
     }
     App.dictRegistry.activeKey=key;
+    // rendering hooks (if exist)
     try{
       if (typeof renderDictList==='function') renderDictList();
       if (typeof renderDictTitle==='function') renderDictTitle();
@@ -43,6 +44,5 @@
     var key=fallbackKeyForLang(lang);
     return switchTo(key);
   };
-  // Expose manual switch
   App.switchDeck = switchTo;
 })();
