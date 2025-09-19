@@ -1,4 +1,15 @@
-// Auto-generated bundle (without decks). Do not edit by hand.
+// Auto bundle
+
+/*=== GLOBAL HELPERS ===*/
+window.keyLabelLang = function keyLabelLang(key){
+  if(!key) return "";
+  var m = String(key).match(/^([a-z]{2})_(.+)$/i);
+  if(!m) return String(key);
+  var map = {verbs:"Дієслова",nouns:"Іменники",adjectives:"Прикметники"};
+  var lang = m[1].toUpperCase();
+  var part = m[2];
+  return (lang + " · " + (map[part] || part));
+};
 
 /*=== FILE: app.core.js ===*/
 /* app.core.js v1.3.1 */
@@ -217,7 +228,6 @@ App.clearFavoritesAll = function(){
   }catch(_){}
 })();
 
-
 /*=== FILE: app.trainer.js ===*/
 /* app.trainer.js v1.4.0 — планировщик + поддержка наборов (без рекурсии) */
 (function(){
@@ -365,7 +375,6 @@ App.clearFavoritesAll = function(){
   }
 })();
 
-
 /*=== FILE: app.progress.js ===*/
 
 /* app.progress.js - scoped persistent progress buckets (lang -> dict -> set -> {stars, successes, lastSeen}) */
@@ -425,7 +434,6 @@ App.clearFavoritesAll = function(){
     }
   };
 })();
-
 
 /*=== FILE: app.decks.js ===*/
 /* app.decks.js — clean, compatible rewrite
@@ -590,7 +598,6 @@ App.clearFavoritesAll = function(){
     pickDefaultKey: pickDefaultKey
   };
 })();
-
 /*=== FILE: app.addon.sets.js ===*/
 /* app.addon.sets.js v1.1.0 — Наборы, автопереход, сохранение прогресса, визуальные статусы */
 (function(){
@@ -741,7 +748,6 @@ App.Sets = App.Sets || {};
   // экспорт служебного
   S._save = saveLS;
 })();
-
 /*=== FILE: app.mistakes.js ===*/
 
 /* app.mistakes.js — v4 (scoped by uiLang+dictLang, independent stars) */
@@ -848,7 +854,6 @@ App.Sets = App.Sets || {};
   M.onShow = function(id){}; // reserved
 })();
 
-
 /*=== FILE: app.favorites.js ===*/
 /* app.favorites.js — independent Favorites deck + progress */
 (function(){
@@ -948,7 +953,6 @@ App.Sets = App.Sets || {};
   };
 })();
 
-
 /*=== FILE: app.favorites.patch.js ===*/
 
 /* app.favorites.patch.js — scoped clear for favorites per dict language */
@@ -985,7 +989,6 @@ App.Sets = App.Sets || {};
     try { if (App.state) App.state.favorites_v2 = {}; App.saveState && App.saveState(); } catch(e){}
   };
 })();
-
 
 /*=== FILE: app.ui.js ===*/
 
@@ -1171,7 +1174,6 @@ if (key === 'fav' || key === 'favorites') {
   document.addEventListener('DOMContentLoaded', App.bootstrap);
 })();
 // конец!
-
 
 /*=== FILE: app.ui.view.js ===*/
 
@@ -1917,7 +1919,6 @@ if (key === 'fav' || key === 'favorites') {
   }
 })();
 
-
 /*=== FILE: ui.bus.js ===*/
 
 // ui.bus.js
@@ -1930,12 +1931,10 @@ window.UIBus = (function(){
   };
 })();
 
-
 /*=== FILE: ui.dicts.js ===*/
 (function(){
 
 })();
-
 
 /*=== FILE: ui.fix.js ===*/
 
@@ -1978,7 +1977,6 @@ window.UIBus = (function(){
   }
 })();
 
-
 /*=== FILE: ui.lifecycle.js ===*/
 // ui.lifecycle.js — unify post-answer and post-set-change flows
 (function(){
@@ -2019,7 +2017,6 @@ window.UIBus = (function(){
     }
   }catch(e){}
 })();
-
 /*=== FILE: ui.options.safe.js ===*/
 /* ui.options.safe.js — safe override for building options (answers) */
 (function(){
@@ -2183,7 +2180,6 @@ window.UIBus = (function(){
     try { install(); } catch(e){}
   }
 })();
-
 /*=== FILE: ui.progress.scope.js ===*/
 // ui.progress.scope.js — v3: scoped progress per (dictKey,setIndex,wordId) with solid reads
 (function(){
@@ -2293,7 +2289,6 @@ window.UIBus = (function(){
   App.state.lastSeen.__isProxy = true;
 })();
 
-
 /*=== FILE: ui.sets.done.js ===*/
 // ui.sets.done.js — v2: visual 'done' marker for finished sets with persistence
 (function(){
@@ -2387,7 +2382,6 @@ window.UIBus = (function(){
   }
 })();
 
-
 /*=== FILE: ui.sets.js ===*/
 (function(){
 
@@ -2402,7 +2396,6 @@ const b = App.Sets.activeBounds();
     App.saveState && App.saveState();
   }
 })();
-
 
 /*=== FILE: ui.startup.js ===*/
 
@@ -2432,7 +2425,6 @@ const b = App.Sets.activeBounds();
   try{ typeof updateStats==='function' && updateStats(); }catch(e){}
 })();
 
-
 /*=== FILE: ui.state.js ===*/
 
 // ui.state.js
@@ -2460,7 +2452,6 @@ const b = App.Sets.activeBounds();
   };
 })();
 
-
 /*=== FILE: ui.stats.core.js ===*/
 // ui.stats.core.js — single source for stats recompute + render
 (function(){
@@ -2475,7 +2466,6 @@ const b = App.Sets.activeBounds();
     try{ if (typeof updateStats === 'function') updateStats(); }catch(e){}
   };
 })();
-
 /*=== FILE: ui.stats.refresh.js ===*/
 // ui.stats.refresh.js — v2: sync top/bottom stats after answers & set changes
 (function(){
@@ -2509,12 +2499,10 @@ const b = App.Sets.activeBounds();
   }catch(e){}
 })();
 
-
 /*=== FILE: ui.trainer.js ===*/
 (function(){
 
 })();
-
 
 /*=== FILE: theme.js ===*/
 
@@ -2535,7 +2523,6 @@ const b = App.Sets.activeBounds();
   };
 })();
 // конец!
-
 
 /*=== FILE: app.addon.penalties.js ===*/
 /* app.addon.penalties.js v1.0.0 — штрафы/реверс/веса */
@@ -2605,7 +2592,6 @@ const b = App.Sets.activeBounds();
   load();
 })();
 
-
 /*=== FILE: app.addon.startup.js ===*/
 /* app.addon.startup.js v1.0.0 — отделённый запуск и подключение словарей */
 (function(){
@@ -2654,78 +2640,67 @@ const b = App.Sets.activeBounds();
   }
 })();
 
-
-/*=== LAZY DECK LOADER & DEFAULT VERBS SELECTOR ===*/
+/*=== LAZY LOADER + REGISTRY REBUILD ===*/
 (function(){
-  // Map lang -> deck file
-  function langFromKey(key){
-    var m = (key||"").match(/^([a-z]{2})_/i);
-    return m ? m[1].toLowerCase() : null;
-  }
-  // Ensure default deck key is {lang}_verbs
-  function defaultDeckKeyForLang(lang){
-    return (lang ? (lang.toLowerCase()+"_verbs") : "en_verbs");
-  }
-  // Public hook to switch active deck with lazy load
-  App = window.App || {};
-  var _setActiveDeckInternal = function(key){
-    // Existing function that sets activeKey if present
-    if (App && App.dictRegistry){
-      App.dictRegistry.activeKey = key;
-    } else {
-      App.dictRegistry = App.dictRegistry || {}; 
-      App.dictRegistry.activeKey = key;
-    }
-  };
-  async function ensureDeckLoadedByKey(key){
-    var lang = langFromKey(key) || "en";
-    if (window.decks && window.decks[key]) return;
-    // if file already loaded for this lang (deck.{lang}.js registers many keys), check a known key
+  function langFromKey(key){ var m=(key||"").match(/^([a-z]{2})_/i); return m?m[1].toLowerCase():null; }
+  function defaultDeckKeyForLang(lang){ return (lang?lang.toLowerCase():"en") + "_verbs"; }
+
+  function rebuildRegistry(){
+    window.App = window.App || {};
+    App.dictRegistry = App.dictRegistry || { list: [], activeKey: null };
+    var list = [];
     if (window.decks){
       for (var k in window.decks){
-        if (langFromKey(k) === lang) return;
+        if (window.decks.hasOwnProperty(k)) list.push(k);
       }
+    }
+    list.sort();
+    App.dictRegistry.list = list;
+    return list;
+  }
+
+  async function ensureDeckLoadedByLang(lang){
+    lang = (lang||"en").toLowerCase();
+    // If already any key of this lang exists, skip load
+    if (window.decks){
+      for (var k in window.decks){ if (langFromKey(k)===lang) return; }
     }
     var file = "deck."+lang+".js";
     await new Promise(function(res, rej){
-      var s = document.createElement("script");
-      s.async = true;
-      s.src = file + (location.search.match(/v=([\w\.\-]+)/)?"" : "?v=1");
-      s.onload = res; s.onerror = rej;
+      var s = document.createElement("script"); s.async=true; s.src=file+"?v=1";
+      s.onload=res; s.onerror=function(e){ console.warn("[lazy] deck file not found:", file); res(); };
       document.head.appendChild(s);
     });
   }
 
-  // Expose a single entry-point
-  App.switchDeck = async function(key){
-    if (!key){ key = defaultDeckKeyForLang(App.currentDictLang || "en"); }
-    await ensureDeckLoadedByKey(key);
-    _setActiveDeckInternal(key);
-    // Try to re-render
+  async function switchToKey(key){
+    var lang = langFromKey(key) || (App.currentDictLang||"en");
+    await ensureDeckLoadedByLang(lang);
+    rebuildRegistry();
+    // select fallback {lang}_verbs if requested key absent
+    if (!window.decks || !window.decks[key]){
+      var fallback = defaultDeckKeyForLang(lang);
+      key = (window.decks && window.decks[fallback]) ? fallback : (App.dictRegistry.list[0]||fallback);
+    }
+    App.dictRegistry.activeKey = key;
+    // rendering hooks (if exist)
     try{
+      if (typeof renderDictList==='function') renderDictList();
       if (typeof renderDictTitle==='function') renderDictTitle();
       if (typeof renderCard==='function') renderCard(true);
       if (App.Stats && typeof App.Stats.recomputeAndRender==='function') App.Stats.recomputeAndRender();
     }catch(e){ console.error(e); }
-  };
+  }
 
-  // On startup: make sure i18n/lang are ready and pick default deck.
-  document.addEventListener("DOMContentLoaded", function(){
-    try{
-      var uiLang = (App.settings && App.settings.uiLang) || "en";
-      // determine current dictionary language: if user changed filter — use it, else english
-      var dictLang = (App.currentDictLang) || "en";
-      // pick default key
-      var defKey = defaultDeckKeyForLang(dictLang);
-      // lazy load and render
-      App.switchDeck(defKey);
-    }catch(e){ console.error(e); App.switchDeck("en_verbs"); }
-  });
-
-  // When user changes dictionary language filter externally, call:
+  window.App = window.App || {};
+  App.switchDeck = function(key){ return switchToKey(key || defaultDeckKeyForLang(App.currentDictLang||"en")); };
   App.onDictLangChanged = function(newLang){
-    App.currentDictLang = newLang || "en";
-    var key = defaultDeckKeyForLang(App.currentDictLang);
-    App.switchDeck(key);
+    App.currentDictLang = (newLang||"en").toLowerCase();
+    return App.switchDeck(defaultDeckKeyForLang(App.currentDictLang));
   };
+
+  document.addEventListener("DOMContentLoaded", function(){
+    var startLang = (App.currentDictLang || "en").toLowerCase();
+    App.switchDeck(defaultDeckKeyForLang(startLang));
+  });
 })();
