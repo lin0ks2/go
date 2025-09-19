@@ -1,27 +1,31 @@
-
-/* ui.stats.refresh.js — P0: single batched refresh per frame, no duplicate hooks */
+// ui.stats.refresh.js — v2: sync top/bottom stats after answers & set changes
 (function(){
-  const App = window.App || (window.App = {});
-  const D = App.DOM || (App.DOM = {});
-
-  let scheduled = false;
-  function rafRefresh(){
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(function(){
-      scheduled = false;
-      try { if (typeof App.renderSetStats === 'function') App.renderSetStats(); } catch(_){}
-      try {
-        const t = App.i18n ? App.i18n() : { totalWords:'Всего слов', learned:'Выучено' };
-        if (App.DOM && App.DOM.statsBar && typeof App.getLearnedCounts === 'function' && typeof App.getActiveDictKey === 'function'){
-          const key = App.getActiveDictKey();
-          const counts = App.getLearnedCounts(key);
-          App.DOM.statsBar.textContent = (t.totalWords||'Всего слов') + ': ' + counts.total + ' / ' + (t.learned||'Выучено') + ': ' + counts.learned;
-        } else if (typeof App.updateStats === 'function'){ App.updateStats(); }
-      } catch(_){}
-    });
+  function refresh(){
+    try{ if (typeof renderSetStats === 'function') renderSetStats(); }catch(e){}
+    try{ if (typeof updateStats === 'function') updateStats(); }catch(e){}
   }
+  function hook(name){
+    var w = window;
+    if (typeof w[name] !== 'function') return;
+    var orig = w[name];
+    w[name] = function(){
+      var r = orig.apply(this, arguments);
+      try{ refresh(); }catch(e){}
+      return r;
+    };
+  }
+  hook('onChoice');
+  hook('onIDontKnow');
+  hook('nextWord');
 
-  // Public minimal API to request refresh once
-  window.UIRefresh = { request: rafRefresh };
+  try{
+    if (window.App && App.Sets && typeof App.Sets.setActiveSetIndex === 'function'){
+      var _set = App.Sets.setActiveSetIndex;
+      App.Sets.setActiveSetIndex = function(i){
+        var r = _set.apply(this, arguments);
+        try{ refresh(); }catch(e){}
+        return r;
+      };
+    }
+  }catch(e){}
 })();
