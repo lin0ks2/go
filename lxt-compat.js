@@ -1,10 +1,16 @@
 
-// lxt-compat.js — glue fixes: lang filter -> lazy load, default verbs, Info modal from i18n
+// lxt-compat.js — glue fixes v2: default verbs immediately, flags for all langs, info modal
 (function(){
+  var ALL_LANGS = ['en','de','fr','sr','es'];
   function onReady(fn){ if (document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
   onReady(function(){
     var App = window.App || (window.App={});
-    // wrap saveSettings to react on dictsLangFilter changes
+
+    // 0) Ensure settings and default filter
+    App.settings = App.settings || {};
+    if (!App.settings.dictsLangFilter) App.settings.dictsLangFilter = 'en';
+
+    // 1) Wrap saveSettings to react on dict language change
     var origSave = App.saveSettings || function(){};
     App.saveSettings = function(next){
       var prevLang = (App.settings && App.settings.dictsLangFilter) || null;
@@ -16,7 +22,37 @@
         }
       }catch(e){}
     };
-    // enforce {lang}_verbs at start
+
+    // 2) Override renderLangFlags to always show full set of flags
+    App.renderLangFlags = function(){
+      var D = App.DOM || (App.DOM={});
+      if (!D.langFlags) return;
+      var active = (App.settings && App.settings.dictsLangFilter) || 'en';
+      var FLAGS = { en:'🇬🇧', de:'🇩🇪', fr:'🇫🇷', sr:'🇷🇸', es:'🇪🇸' };
+      D.langFlags.innerHTML = '';
+      ALL_LANGS.forEach(function(lg){
+        var b = document.createElement('button');
+        b.className = 'flag';
+        b.setAttribute('data-lang', lg);
+        b.setAttribute('aria-pressed', String(lg===active));
+        b.title = (App.i18n && App.i18n()['lang_'+lg]) || lg.toUpperCase();
+        b.textContent = FLAGS[lg] || lg.toUpperCase();
+        b.addEventListener('click', function(){
+          App.settings.dictsLangFilter = lg;
+          App.saveSettings && App.saveSettings(App.settings);
+        });
+        D.langFlags.appendChild(b);
+      });
+    };
+
+    // 3) Force default {lang}_verbs immediately at first paint
+    try{
+      if (App.switchDeck){
+        var lang = (App.settings && App.settings.dictsLangFilter) || 'en';
+        App.switchDeck((lang||'en')+'_verbs');
+      }
+    }catch(e){}
+    // also re-assert shortly after
     setTimeout(function(){
       try{
         var k = (App.dictRegistry && App.dictRegistry.activeKey) || null;
@@ -25,8 +61,9 @@
           if (App.switchDeck) App.switchDeck((lang||'en')+'_verbs');
         }
       }catch(e){}
-    }, 0);
-    // Info modal
+    }, 50);
+
+    // 4) Info modal (already added earlier) — keep as is
     try{
       var btn = document.getElementById('btnInfo');
       if (btn){
