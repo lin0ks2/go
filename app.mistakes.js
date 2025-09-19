@@ -1,248 +1,194 @@
-/**
- * app.mistakes.js
+
+/* app.mistakes.js — v3
+ * Mistakes storage with per-dictionary-language scoping and independent progress.
+ * Public API:
+ *   App.Mistakes.add(id, wordObj, sourceKey)
+ *   App.Mistakes.deck()           -> array of full word objects for ACTIVE filters
+ *   App.Mistakes.list()           -> alias of deck()
+ *   App.Mistakes.count()          -> number (ACTIVE filters)
+ *   App.Mistakes.clearActive()    -> clears only active uiLang+dictLang bucket
+ *   App.Mistakes.sourceKeyFor(id) -> last known sourceKey for a word id
+ *   App.Mistakes.onShow(id)       -> no-op (reserved)
+ *   App.Mistakes.getStars(sourceKey, id)
+ *   App.Mistakes.setStars(sourceKey, id, value)
+ *   App.Mistakes.sourceKeyInActive(id)
  *
- * Хранение ошибок — ПО ЯЗЫКУ ИНТЕРФЕЙСА (App.settings.lang).
- * Каждая запись также содержит язык словаря-источника (dl),
- * чтобы на чтении фильтровать по языку АКТИВНОГО словаря.
+ * ACTIVE filters:
+ *   - ui language: App.settings.lang ('ru' | 'uk')
+ *   - dict language: resolved from App.settings.dictsLangFilter or from active dict key
  *
- * localStorage key: 'mistakes.v1'
- * Структура:
+ * Data layout in localStorage (LS_M3):
  * {
- *   <uiLang>: {
- *     <dictKey>: {
- *       <wordId>: { ts:<ms>, seen:<n>, dl:<dictLang|null> }
+ *   uiLang: {
+ *     dictLang: {
+ *       items: { [sourceKey]: { [id]: true } },
+ *       stars: { [sourceKey]: { [id]: number } },   // independent progress
+ *       sources: { [id]: sourceKey }                // reverse map
  *     }
  *   }
  * }
  */
-(function(){
-  var App = window.App || (window.App = {});
-  var LS_KEY = 'mistakes.v1';
-  var MAX_PER_LANG = 1000; // лимит уникальных слов на язык интерфейса
+(function() {
+  const App = window.App || (window.App = {});
+  const M = App.Mistakes || (App.Mistakes = {});
 
-  // ---------- utils ----------
-  function load(){
-    try{
-      var raw = localStorage.getItem(LS_KEY);
-      return raw ? JSON.parse(raw) : {};
-    }catch(e){ return {}; }
-  }
-  function save(db){
-    try{ localStorage.setItem(LS_KEY, JSON.stringify(db)); }catch(e){}
-  }
-  function activeLang(){               // язык интерфейса (RU/UK/…)
-    return (App.settings && App.settings.lang) || 'ru';
-  }
-  function langOfKey(dictKey){         // язык словаря-источника (de/en/…)
-    try{
-      if (App.Decks && App.Decks.langOfKey) return App.Decks.langOfKey(dictKey);
-    }catch(e){}
-    return null;
-  }
-  function targetLang(){               // язык ТЕКУЩЕГО активного словаря (если есть)
-    try{
-      var key = App.dictRegistry && App.dictRegistry.activeKey;
-      if (key && key !== 'mistakes') return langOfKey(key) || null;
-    }catch(e){}
-    return null; // если активен 'mistakes' или активный словарь неизвестен — не фильтруем по словарному языку
-  }
-  function now(){ return Date.now ? Date.now() : (+new Date()); }
+  const LS_M3 = 'mistakes.v3';
+  const SAFE_INT = function(x, def){ x = Number(x); return Number.isFinite(x) ? x : (def||0); };
 
-  function ensure(db, uiLang, dictKey){
+  function _load() {
+    try { return JSON.parse(localStorage.getItem(LS_M3) || '{}'); }
+    catch(e){ return {}; }
+  }
+  function _save(obj) {
+    try { localStorage.setItem(LS_M3, JSON.stringify(obj)); } catch(e){}
+  }
+
+  function _activeUiLang(){
+    return (App.settings && (App.settings.lang === 'uk' ? 'uk' : 'ru')) || 'ru';
+  }
+
+  function _langOfKey(k){
+    try {
+      const m = String(k||'').match(/^([a-z]{2})_/i);
+      return m ? m[1].toLowerCase() : null;
+    } catch(e){ return null; }
+  }
+
+  function _activeDictLang(){
+    if (App.settings && App.settings.dictsLangFilter) return App.settings.dictsLangFilter;
+    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const lg = _langOfKey(key);
+    return lg || 'de';
+  }
+
+  function _ensureBucket(db, uiLang, dictLang){
     if (!db[uiLang]) db[uiLang] = {};
-    if (!db[uiLang][dictKey]) db[uiLang][dictKey] = {};
-    return db[uiLang][dictKey];
+    if (!db[uiLang][dictLang]) db[uiLang][dictLang] = { items:{}, stars:{}, sources:{}, _v:3 };
+    return db[uiLang][dictLang];
   }
-  function totalCountForLang(db, uiLang){
-    var total=0, L=db[uiLang]||{};
-    for (var k in L){ if (!L.hasOwnProperty(k)) continue;
-      total += Object.keys(L[k]||{}).length;
+
+  function _sourceMap(db) {
+    const uiLang = _activeUiLang();
+    const dictLang = _activeDictLang();
+    const b = _ensureBucket(db, uiLang, dictLang);
+    return b.sources || (b.sources = {});
+  }
+
+  // Public: where this id originally comes from
+  M.sourceKeyFor = function(id){
+    const db = _load();
+    const sources = _sourceMap(db);
+    return sources && sources[String(id)] || null;
+  };
+
+  // Add word into mistakes under active uiLang + dictLang bucket
+  M.add = function(id, word, sourceKey){
+    if (!id) return;
+    id = String(id);
+    const uiLang = _activeUiLang();
+    if (!sourceKey && word && (word._mistakeSourceKey || word._favoriteSourceKey)) {
+      sourceKey = word._mistakeSourceKey || word._favoriteSourceKey;
     }
-    return total;
-  }
-  function evictIfNeeded(db, uiLang){
-    var total = totalCountForLang(db, uiLang);
-    if (total <= MAX_PER_LANG) return;
-    var L=db[uiLang]||{}, items=[];
-    for (var dk in L){ if (!L.hasOwnProperty(dk)) continue;
-      var map=L[dk];
-      for (var id in map){ if (!map.hasOwnProperty(id)) continue;
-        items.push([dk, id, map[id].ts||0]);
-      }
+    if (!sourceKey) {
+      const active = (App && App.dictRegistry && App.dictRegistry.activeKey) || null;
+      if (active && active !== 'mistakes') sourceKey = active;
     }
-    // удаляем самые старые
-    items.sort(function(a,b){ return (a[2]|0) - (b[2]|0); });
-    var toDrop = total - MAX_PER_LANG;
-    for (var i=0; i<toDrop && i<items.length; i++){
-      var dk = items[i][0], id = items[i][1];
-      delete L[dk][id];
-    }
+    if (!sourceKey) return;
+
+    const dictLang = _langOfKey(sourceKey) || _activeDictLang();
+    const db = _load();
+    const bucket = _ensureBucket(db, uiLang, dictLang);
+
+    if (!bucket.items[sourceKey]) bucket.items[sourceKey] = {};
+    bucket.items[sourceKey][id] = true;
+    bucket.sources[id] = sourceKey;
+
+    _save(db);
+  };
+
+  // Independent stars for mistakes-only
+  function _getStarsBucket(db){
+    const uiLang = _activeUiLang();
+    const dictLang = _activeDictLang();
+    const b = _ensureBucket(db, uiLang, dictLang);
+    return b.stars || (b.stars = {});
   }
-  function resolveDeck(dictKey){
-    if (App.Decks && App.Decks.resolveDeckByKey) {
-      return App.Decks.resolveDeckByKey(dictKey) || [];
-    }
-    return [];
-  }
-  function indexDeckById(deck){
-    var idx={};
-    for (var i=0;i<deck.length;i++){ idx[String(deck[i].id)] = deck[i]; }
-    return idx;
-  }
 
-  // ---------- public API ----------
-  App.Mistakes = {
-    /**
-     * Добавить/обновить ошибку.
-     * ВАЖНО: бакет = ТЕКУЩИЙ ЯЗЫК ИНТЕРФЕЙСА (UI).
-     * Дополнительно сохраняем язык словаря-источника (dl),
-     * чтобы потом фильтровать без внешних зависимостей.
-     */
-    add: function(id, card, sourceKey){
-      try{
-        id = String(id);
-        var dictKey = sourceKey || (card && card.sourceKey) || (App.dictRegistry && App.dictRegistry.activeKey) || null;
-        if (!dictKey) return;
+  M.getStars = function(sourceKey, id){
+    const db = _load();
+    const sb = _getStarsBucket(db);
+    const sk = String(sourceKey||'');
+    const wid = String(id||'');
+    const obj = sb[sk] || {};
+    return SAFE_INT(obj[wid], 0);
+  };
+  M.setStars = function(sourceKey, id, val){
+    const db = _load();
+    const sb = _getStarsBucket(db);
+    const sk = String(sourceKey||'');
+    const wid = String(id||'');
+    if (!sb[sk]) sb[sk] = {};
+    sb[sk][wid] = SAFE_INT(val, 0);
+    _save(db);
+  };
 
-        var uiLang = activeLang();
-        var dkLang = langOfKey(dictKey) || null;
+  // Full deck for ACTIVE filters (uiLang + dictLang)
+  M.deck = function(){
+    const db = _load();
+    const uiLang = _activeUiLang();
+    const dictLang = _activeDictLang();
+    const bucket = _ensureBucket(db, uiLang, dictLang);
 
-        var db = load();
-        var bucket = ensure(db, uiLang, dictKey);
-
-        if (!bucket[id]) {
-          bucket[id] = { ts: now(), seen: 1, dl: dkLang };
-        } else {
-          bucket[id].seen = (bucket[id].seen|0)+1;
-          bucket[id].ts = now();
-          if (dkLang) bucket[id].dl = dkLang; // обновляем dl, если язык источника распознан
+    const out = [];
+    const items = bucket.items || {};
+    Object.keys(items).forEach(function(sourceKey){
+      const ids = items[sourceKey] || {};
+      const deck = (App.Decks && typeof App.Decks.resolveDeckByKey==='function')
+        ? (App.Decks.resolveDeckByKey(sourceKey) || [])
+        : [];
+      if (!deck.length) return;
+      const map = new Map(deck.map(w => [String(w.id), w]));
+      Object.keys(ids).forEach(function(id){
+        const w = map.get(String(id));
+        if (w) {
+          if (!w._mistakeSourceKey) w._mistakeSourceKey = sourceKey;
+          out.push(w);
         }
-
-        evictIfNeeded(db, uiLang);
-        save(db);
-      }catch(e){}
-    },
-
-    /** Список (превью) для ТЕКУЩЕГО языка интерфейса; фильтр по языку активного словаря (если известен). */
-    list: function(){
-      var uiLang = activeLang();
-      var db = load();
-      var L = db[uiLang] || {};
-      var tLang = targetLang();
-
-      var out=[];
-      for (var dk in L){ if (!L.hasOwnProperty(dk)) continue;
-        var m=L[dk];
-        for (var id in m){ if (!m.hasOwnProperty(id)) continue;
-          var entry = m[id];
-          // фильтр по языку словаря: если известен tLang и у записи есть dl — сравниваем по dl
-          if (tLang && entry && entry.dl && entry.dl !== tLang) continue;
-          out.push({ id: id, dictKey: dk, ts: entry.ts||0 });
-        }
-      }
-      out.sort(function(a,b){ return (b.ts|0) - (a.ts|0); });
-      return out;
-    },
-
-    /** Кол-во уникальных ошибок для ТЕКУЩЕГО UI-языка; фильтр по языку активного словаря. */
-    count: function(){
-      var uiLang = activeLang();
-      var db = load();
-      var L = db[uiLang] || {};
-      var tLang = targetLang();
-
-      var total=0;
-      for (var dk in L){ if (!L.hasOwnProperty(dk)) continue;
-        var map=L[dk]; if (!map) continue;
-        for (var id in map){ if (!map.hasOwnProperty(id)) continue;
-          var entry = map[id];
-          if (tLang && entry && entry.dl && entry.dl !== tLang) continue;
-          total++;
-        }
-      }
-      return total;
-    },
-
-    /**
-     * Тренировочная колода для ТЕКУЩЕГО UI-языка; фильтр по языку активного словаря.
-     * Параллельно чистим «битые» id, которых уже нет в исходном словаре.
-     */
-    deck: function(){
-      var uiLang = activeLang();
-      var db = load();
-      var L = db[uiLang] || {};
-      var tLang = targetLang();
-
-      var out=[];
-      var perDictIndex = {};
-
-      // Индексируем только те словари, у которых потенциально пригодятся записи
-      for (var dk in L){ if (!L.hasOwnProperty(dk)) continue;
-        var deck = resolveDeck(dk);
-        if (!deck || !deck.length) continue;
-        perDictIndex[dk] = indexDeckById(deck);
-      }
-
-      // Валидируем/собираем
-      for (var dk in L){ if (!L.hasOwnProperty(dk)) continue;
-        var idx = perDictIndex[dk]; if (!idx) continue;
-        var map = L[dk];
-        for (var id in map){ if (!map.hasOwnProperty(id)) continue;
-          var entry = map[id];
-          if (tLang && entry && entry.dl && entry.dl !== tLang) continue; // фильтр по языку словаря-источника
-          var w = idx[id];
-          if (w){
-            var ww = Object.assign({}, w);
-            ww._mistakeSourceKey = dk;
-            out.push(ww);
-          } else {
-            // битая запись (слово удалили/поменялся id) — вычищаем
-            delete map[id];
-          }
-        }
-      }
-      if (out.length) save(db);
-
-      // Сортировка: новые — вперёд
-      out.sort(function(a,b){
-        var mapA = (L[a._mistakeSourceKey]||{}), mapB = (L[b._mistakeSourceKey]||{});
-        var eA = mapA[String(a.id)], eB = mapB[String(b.id)];
-        var ta = eA?eA.ts:0, tb = eB?eB.ts:0;
-        return (tb|0) - (ta|0);
       });
-      return out;
-    },
+    });
+    return out;
+  };
+  M.list = function(){ return M.deck(); };
 
-    /** Словарь-источник для id (в ТЕКУЩЕМ UI-бакете). */
-    sourceKeyFor: function(id){
-      var uiLang = activeLang();
-      var db = load();
-      var L = db[uiLang] || {};
-      id = String(id);
-      for (var dk in L){ if (!L.hasOwnProperty(dk)) continue;
-        if (L[dk] && L[dk][id]) return dk;
-      }
-      return null;
-    },
+  M.count = function(){
+    const db = _load();
+    const uiLang = _activeUiLang();
+    const dictLang = _activeDictLang();
+    const bucket = _ensureBucket(db, uiLang, dictLang);
+    let n = 0;
+    Object.keys(bucket.items || {}).forEach(sk => {
+      n += Object.keys(bucket.items[sk] || {}).length;
+    });
+    return n;
+  };
 
-    /** Очистить ошибки для ТЕКУЩЕГО UI-языка. */
-    clearActive: function(){
-      var uiLang = activeLang();
-      var db = load();
-      if (db[uiLang]) { db[uiLang] = {}; save(db); }
-    },
+  // Clear only active bucket
+  M.clearActive = function(){
+    const db = _load();
+    const uiLang = _activeUiLang();
+    const dictLang = _activeDictLang();
+    db[uiLang] && db[uiLang][dictLang] && (db[uiLang][dictLang] = { items:{}, stars:{}, sources:{}, _v:3 });
+    _save(db);
+  };
 
-    /** Отметить показ карточки (обновить recency). */
-    onShow: function(id){
-      var uiLang = activeLang();
-      var db = load();
-      var L = db[uiLang] || {};
-      id = String(id);
-      for (var dk in L){ if (!L.hasOwnProperty(dk)) continue;
-        var m=L[dk];
-        if (m && m[id]) { m[id].ts = now(); break; }
-      }
-      save(db);
-    }
+  // Optional: remember last shown id
+  M.onShow = function(id){};
+
+  M.sourceKeyInActive = function(id){
+    const db = _load();
+    const uiLang = _activeUiLang();
+    const dictLang = _activeDictLang();
+    const bucket = _ensureBucket(db, uiLang, dictLang);
+    return (bucket.sources || {})[String(id)] || null;
   };
 })();

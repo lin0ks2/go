@@ -1,7 +1,10 @@
-/* app.ui.view.js — stable build: milestones (learned only), clean UI, no errors modal */
+/* app.ui.view.js — stable build: mistakes + milestones + calm motivation */
 (function () {
   const App = window.App || (window.App = {});
   const D = App.DOM || (App.DOM = {});
+
+  // ────────────────────────────────────────────────────────────
+  // helpers
 
   // ───────────────── dictionary title + set stats ─────────────────
   function renderDictTitle(){
@@ -11,17 +14,15 @@
       const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
       const name = (App.Decks && App.Decks.resolveNameByKey) ? App.Decks.resolveNameByKey(key) : (key||'');
       el.textContent = name || '';
-      try { document.dispatchEvent(new CustomEvent('dict:title:updated',{detail:{key:(App.dictRegistry&&App.dictRegistry.activeKey)||null}})); } catch(e){}
-    }catch(_){}
+    try{document.dispatchEvent(new CustomEvent('dict:title:updated',{detail:{key:(App.dictRegistry&&App.dictRegistry.activeKey)||null}}));}catch(e){}
+    }catch(_){};
   }
-
   function renderSetStats(){
     try{
       const host = document.getElementById('setStats');
       if (!host || !App.Sets) return;
       const b = App.Sets.activeBounds ? App.Sets.activeBounds() : {start:0,end:0};
       const deck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey)||[]) : [];
-      // Порог «засчитано» в статистике сетов оставляем как раньше (starsMax), чтобы не менять поведение UI
       const sMax = (App.Trainer && App.Trainer.starsMax) ? App.Trainer.starsMax() : 6;
       const stars = (App.state && App.state.stars) || {};
       const total = Math.max(0, (b.end - b.start));
@@ -35,15 +36,46 @@
     }catch(_){}
   }
 
-  function keyLang(key){
+  
+  // ───────────────── dictionary title + set stats ─────────────────
+  function renderDictTitle(){
+    try{
+      const el = document.getElementById('dictActiveTitle');
+      if (!el) return;
+      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+      const name = (App.Decks && App.Decks.resolveNameByKey) ? App.Decks.resolveNameByKey(key) : (key||'');
+      el.textContent = name || '';
+    try{document.dispatchEvent(new CustomEvent('dict:title:updated',{detail:{key:(App.dictRegistry&&App.dictRegistry.activeKey)||null}}));}catch(e){}
+    }catch(_){};
+  }
+  function renderSetStats(){
+    try{
+      const host = document.getElementById('setStats');
+      if (!host || !App.Sets) return;
+      const b = App.Sets.activeBounds ? App.Sets.activeBounds() : {start:0,end:0};
+      const deck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey)||[]) : [];
+      const sMax = (App.Trainer && App.Trainer.starsMax) ? App.Trainer.starsMax() : 6;
+      const stars = (App.state && App.state.stars) || {};
+      const total = Math.max(0, (b.end - b.start));
+      let learned = 0;
+      for (let i=b.start; i<b.end; i++){
+        const w = deck[i]; if (!w) continue;
+        if ((stars[w.id]||0) >= sMax) learned++;
+      }
+      const t = (typeof App.i18n === 'function') ? App.i18n() : { badgeSetWords:'Слов в наборе', badgeLearned:'Выучено' };
+      host.textContent = (t.badgeSetWords||'Слов в наборе') + ': ' + String(total) + ' / ' + (t.badgeLearned||'Выучено') + ': ' + String(learned);
+    }catch(_){}
+  }
+function keyLang(key){
     const m = String(key||'').match(/^([a-z]{2})_/i);
     return m ? m[1].toLowerCase() : 'xx';
   }
   // Order dictionaries within one language the same as German:
+  // verbs, nouns, adjectives, adverbs, pronouns, prepositions, numbers, conjunctions, particles
   function _categoryRank(key){
     try{
       const k = String(key||'').toLowerCase().replace(/\s+/g,'');
-      const suf = k.replace(/^[a-z]{2}_/,'');
+      const suf = k.replace(/^[a-z]{2}_/,''); // e.g. "sr_verbs" -> "verbs"
       const order = { verbs:0, nouns:1, adjectives:2, adverbs:3, pronouns:4, prepositions:5, numbers:6, conjunctions:7, particles:8 };
       return (suf in order) ? order[suf] : 999;
     } catch(e){ return 999; }
@@ -55,6 +87,7 @@
       return String(a).localeCompare(String(b));
     });
   }
+
 
   function getActiveDeck() {
     if (App.Trainer && typeof App.Trainer.safeGetDeckSlice === 'function') {
@@ -176,7 +209,7 @@
     }
     const deck = getActiveDeck();
     if (!deck.length) {
-      if ((App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) || (App.dictRegistry.activeKey === 'fav' && App.Favorites)) {
+      if (App.dictRegistry.activeKey === 'mistakes') {
         const t = App.i18n ? App.i18n() : null;
         const msg = t && t.allMistakesDone ? t.allMistakesDone :
           (App.settings && App.settings.lang === 'uk' ? 'Усі помилки закриті!' : 'Все ошибки закрыты!');
@@ -209,7 +242,7 @@
       App.state.lastShownWordId = w.id;
       App.state.lastSeen[w.id] = Date.now();
       App.saveState();
-      try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
     }
     const t = App.i18n();
     const isReverse = decideModeForWord(w);
@@ -276,7 +309,7 @@
       App.state.stars[w.id] = App.clamp(cur + 1, 0, App.Trainer.starsMax());
       App.state.successes[w.id] = (App.state.successes[w.id] || 0) + 1;
       App.saveState();
-      try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
       renderStars();
       updateStats();
 
@@ -301,11 +334,12 @@
     App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
     App.state.totals.errors += 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
-    // ⛔️ отключаем бейдж за ошибки — оставляем только добавление в "Мои ошибки"
-    // (раньше тут был вызов App.Milestones.tryShow('errors', ...))
+   // if (App.state.totals.sessionErrors % 5 === 0 && App.Milestones && App.Milestones.tryShow) {
+   //   App.Milestones.tryShow('errors', { count: App.state.totals.sessionErrors });
+   // }
     addToMistakesOnFailure(w);
     App.saveState();
-    try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
     renderStars();
     updateStats();
   }
@@ -319,10 +353,12 @@
     App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
     App.state.totals.errors += 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
-    // ⛔️ отключаем бейдж за ошибки
+    if (App.state.totals.sessionErrors % 5 === 0 && App.Milestones && App.Milestones.tryShow) {
+      App.Milestones.tryShow('errors', { count: App.state.totals.sessionErrors });
+    }
     addToMistakesOnFailure(w);
     App.saveState();
-    try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
     renderStars();
     updateStats();
     setTimeout(function () {
@@ -356,6 +392,8 @@
     renderSetStats();
   };
 
+  
+  
   const FLAG_EMOJI = { ru:'🇷🇺', uk:'🇺🇦', en:'🇬🇧', de:'🇩🇪', es:'🇪🇸', fr:'🇫🇷', it:'🇮🇹', pl:'🇵🇱', sr:'🇷🇸', tr:'🇹🇷' };
   App.renderLangFlags = function(){
     if (!D.langFlags) return;
@@ -389,19 +427,19 @@
       D.langFlags.appendChild(b);
     });
   };
-
-  App.switchToSetImmediate = function () {
-    try { if (App.renderSetsBar) App.renderSetsBar(); } catch(e){} 
-    const b = App.Sets.activeBounds();
+App.switchToSetImmediate = function () {
+    
+  try { if (App.renderSetsBar) App.renderSetsBar(); } catch(e){} 
+const b = App.Sets.activeBounds();
     if (App.state.index < b.start || App.state.index >= b.end) App.state.index = b.start;
     renderCard(true);
     renderSetStats();
     App.saveState && App.saveState();
-    try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
   };
 
   // ────────────────────────────────────────────────────────────
-  // milestones module (throttled modal) — оставляем только «learned»
+  // milestones module (throttled modal)
   App.Milestones = App.Milestones || {};
   (function (M) {
     const LS = 'milestone.state.v1';
@@ -414,11 +452,8 @@
     const S = load();
 
     M.tryShow = function (type, payload) {
-      // 🔒 отключаем «errors», оставляем только «learned»
-      if (type === 'errors') return false;
-
       const now = Date.now();
-      if (now - (S.lastShownAt || 0) < 120000) return;
+      if (now - (S.lastShownAt || 0) < 120000) return; // 2 min
       const modal = document.getElementById('milestoneModal'); if (!modal) return;
       const title = document.getElementById('milestoneTitle');
       const text = document.getElementById('milestoneText');
@@ -431,6 +466,13 @@
         if (S.shownBadges[k]) return;
         title.textContent = '🎉';
         text.textContent = (t.milestoneLearned || 'Вы выучили {n} слов!').replace('{n}', n);
+        S.shownBadges[k] = true;
+      } else if (type === 'errors') {
+        const n = (payload && payload.count) || 0;
+        const k = 'errors:' + n;
+        if (S.shownBadges[k]) return;
+        title.textContent = '💪';
+        text.textContent = (t.milestoneErrors || '5 ошибок — не сдаёмся!').replace('{n}', n);
         S.shownBadges[k] = true;
       } else {
         return;
@@ -492,15 +534,7 @@
     if (key === 'mistakes') {
       const t = (typeof App.i18n === 'function') ? App.i18n() : null;
       name.textContent = (t && t.mistakesName) ? t.mistakesName : 'Мои ошибки';
-    } else if (key === 'fav' && App.Favorites){
-    const deck = App.Favorites.deck() || [];
-    total = deck.length;
-    for (let i=0;i<deck.length;i++){
-      const w = deck[i];
-      const dk = w._favoriteSourceKey || null;
-      if (dk && App.Favorites.progress.isLearned(dk, w.id)) learned++;
-    }
-  } else {
+    } else {
       name.textContent = App.Decks.resolveNameByKey(key);
     }
     name.title = name.textContent;
@@ -555,22 +589,21 @@
       if (row.classList.contains('disabled')) return;
       App.dictRegistry.activeKey = key;
       App.saveDictRegistry();
-
-      // Special case for "My mistakes": stay in dictionary even if empty
-      if (key === 'mistakes') {
-        try {
-          if (App.Trainer && typeof App.Trainer.setBatchIndex === 'function') {
-            App.Trainer.setBatchIndex('mistakes', 0);
-          }
-        } catch(e){}
-        renderDictList();
-        if (App.renderSetsBar) App.renderSetsBar();
-        renderCard(true);
-        updateStats();
-        return;
-      }
-
-      App.state.index = 0;
+      
+    // Special case for "My mistakes": stay in dictionary even if empty
+    if (key === 'mistakes') {
+      try {
+        if (App.Trainer && typeof App.Trainer.setBatchIndex === 'function') {
+          App.Trainer.setBatchIndex('mistakes', 0);
+        }
+      } catch(e){}
+      renderDictList();
+      if (App.renderSetsBar) App.renderSetsBar();
+      renderCard(true);
+      updateStats();
+      return;
+    }
+App.state.index = 0;
       App.state.lastIndex = -1;
       renderDictList();
       App.renderSetsBar();
@@ -596,13 +629,24 @@
         if (cnt < 4) {
           row.classList.add('disabled');
           row.setAttribute('aria-disabled', 'true');
-          // ⚠️ больше НЕ пишем ничего в #motivationBox — просто остаётся неактивным
+          row.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+              const t = (typeof App.i18n === 'function') ? App.i18n() : null;
+              const msg = t && t.needMoreMistakes
+                ? t.needMoreMistakes.replace('{n}', String(4 - cnt))
+                : 'Добавьте ещё ' + (4 - cnt) + ' слов с ошибками для активации';
+              const box = document.getElementById('motivationBox');
+              if (box) { box.textContent = msg; }
+            } catch (_) {}
+          }, { capture: true });
         }
       } catch (e) {}
     })();
 
     if (canShowFav()) host.appendChild(makeDictRow('fav'));
-
+    
     // filter builtin keys by selected language (if any) and sort by unified category order
     (function(){
       const all = App.Decks.builtinKeys();
@@ -683,69 +727,74 @@
 })();
 
 
-// Bind extra actions (Info & Donate)
-(function(){
-  const infoBtn = document.getElementById('btnInfo');
-  const donateBtn = document.getElementById('btnDonate');
-  const modal = document.getElementById('infoModal');
-  const titleEl = document.getElementById('infoTitle');
-  const contentEl = document.getElementById('infoContent');
-  const closeEl = document.getElementById('infoClose');
+  // Bind extra actions (Info & Donate)
+  (function(){
+    const infoBtn = document.getElementById('btnInfo');
+    const donateBtn = document.getElementById('btnDonate');
+    const modal = document.getElementById('infoModal');
+    const titleEl = document.getElementById('infoTitle');
+    const contentEl = document.getElementById('infoContent');
+    const closeEl = document.getElementById('infoClose');
 
-  function i18nText(){
-    const t = (typeof App.i18n === 'function') ? App.i18n() : {};
-    const ru = {
-      infoTitle: 'Как пользоваться',
-      infoIntro: 'Короткая инструкция для быстрого старта:',
-      infoList: [
-        'Откройте список словарей (кнопка с книгой в шапке) и выберите нужный.',
-        'Выберите набор — плитки под заголовком (каждый по 50 слов).',
-        'На карточке нажимайте правильный перевод. «Не знаю» честно помечает слово как сложное.',
-        'Звезды показывают прогресс слова: чем больше, тем реже слово попадается.',
-        'Готовый набор подсвечивается; активный — в рамке. После последнего начинается первый.',
-        'Прогресс и настройки сохраняются в вашем браузере.'
-      ],
-      ok: 'Закрыть',
-      donateSoon: 'Скоро: донат-страница'
-    };
-    const uk = {
-      infoTitle: 'Як користуватися',
-      infoIntro: 'Коротка інструкція для швидкого старту:',
-      infoList: [
-        'Відкрийте список словників (кнопка з книжкою у шапці) і оберіть потрібний.',
-        'Оберіть набір — плитки під заголовком (кожен по 50 слів).',
-        'На картці натискайте правильний переклад. «Не знаю» чесно позначає слово як складне.',
-        'Зірочки показують прогрес слова: що їх більше, то рідше слово трапляється.',
-        'Готовий набір підсвічується; активний — у рамці. Після останнього починається перший.',
-        'Прогресс і налаштування зберігаються у вашому браузері.'
-      ],
-      ok: 'Закрити',
-      donateSoon: 'Скоро: сторінка донату'
-    };
-    const lang = (App.settings && App.settings.lang) || 'ru';
-    return (lang === 'uk') ? uk : ru;
-  }
-
-  function openInfo(){
-    const t = i18nText();
-    if (titleEl) titleEl.textContent = t.infoTitle;
-    if (contentEl){
-      contentEl.innerHTML = '';
-      const p = document.createElement('p'); p.textContent = t.infoIntro; contentEl.appendChild(p);
-      const ul = document.createElement('ul');
-      t.infoList.forEach(x => { const li=document.createElement('li'); li.textContent = x; ul.appendChild(li); });
-      contentEl.appendChild(ul);
+    function i18nText(){
+      const t = (typeof App.i18n === 'function') ? App.i18n() : {};
+      const ru = {
+        infoTitle: 'Как пользоваться',
+        infoIntro: 'Короткая инструкция для быстрого старта:',
+        infoList: [
+          'Откройте список словарей (кнопка с книгой в шапке) и выберите нужный.',
+          'Выберите набор — плитки под заголовком (каждый по 50 слов).',
+          'На карточке нажимайте правильный перевод. «Не знаю» честно помечает слово как сложное.',
+          'Звезды показывают прогресс слова: чем больше, тем реже слово попадается.',
+          'Готовый набор подсвечивается; активный — в рамке. После последнего начинается первый.',
+          'Прогресс и настройки сохраняются в вашем браузере.'
+        ],
+        ok: 'Закрыть',
+        donateSoon: 'Скоро: донат-страница'
+      };
+      const uk = {
+        infoTitle: 'Як користуватися',
+        infoIntro: 'Коротка інструкція для швидкого старту:',
+        infoList: [
+          'Відкрийте список словників (кнопка з книжкою у шапці) і оберіть потрібний.',
+          'Оберіть набір — плитки під заголовком (кожен по 50 слів).',
+          'На картці натискайте правильний переклад. «Не знаю» чесно позначає слово як складне.',
+          'Зірочки показують прогрес слова: що їх більше, то рідше слово трапляється.',
+          'Готовий набір підсвічується; активний — у рамці. Після останнього починається перший.',
+          'Прогресс і налаштування зберігаються у вашому браузері.'
+        ],
+        ok: 'Закрити',
+        donateSoon: 'Скоро: сторінка донату'
+      };
+      const lang = (App.settings && App.settings.lang) || 'ru';
+      return (lang === 'uk') ? uk : ru;
     }
-    if (modal) modal.classList.remove('hidden');
-  }
-  function closeInfo(){ if (modal) modal.classList.add('hidden'); }
 
-  infoBtn && infoBtn.addEventListener('click', openInfo);
-  closeEl && closeEl.addEventListener('click', closeInfo);
-  modal && modal.addEventListener('click', (e)=>{ if (e.target===modal) closeInfo(); });
+    function openInfo(){
+      const t = i18nText();
+      if (titleEl) titleEl.textContent = t.infoTitle;
+      if (contentEl){
+        contentEl.innerHTML = '';
+        const p = document.createElement('p'); p.textContent = t.infoIntro; contentEl.appendChild(p);
+        const ul = document.createElement('ul');
+        t.infoList.forEach(x => { const li=document.createElement('li'); li.textContent = x; ul.appendChild(li); });
+        contentEl.appendChild(ul);
+      }
+      if (modal) modal.classList.remove('hidden');
+    }
+    function closeInfo(){ if (modal) modal.classList.add('hidden'); }
 
-  // <a id="btnDonate" href="..."> — работает нативно, обработчик не перехватываем
-})();
+    infoBtn && infoBtn.addEventListener('click', openInfo);
+    closeEl && closeEl.addEventListener('click', closeInfo);
+    modal && modal.addEventListener('click', (e)=>{ if (e.target===modal) closeInfo(); });
+
+    // ⬇️ УДАЛЕНО: прежний обработчик клика доната с alert, чтобы не мешал переходу по ссылке
+    // donateBtn && donateBtn.addEventListener('click', ()=>{
+    //   const t = i18nText();
+    //   alert(t.donateSoon);
+    // });
+    // ⬆️ Теперь <a id="btnDonate" href="..."> работает нативно без перехвата клика.
+  })();
 
 // === Safe addons: i18n-driven Info content + flag injection (no overrides) ===
 (function(){
@@ -825,5 +874,46 @@
     reapplyAll();
   }
 
-  try{ App.renderCard = renderCard; App.renderSetStats = renderSetStats; }catch(e){}
+try{ App.renderCard = renderCard; App.renderSetStats = renderSetStats; }catch(e){}
 })();
+
+// VISUAL FIX v2: disable '5 mistakes' modal and hide activation hints
+try{
+  window.App = window.App || {};
+  App.UI = App.UI || {};
+  if (typeof App.UI.showMistakesModal === 'function'){
+    App.UI.showMistakesModal = function(){ /* disabled */ };
+  }
+}catch(e){}
+
+(function(){
+  function hideActivationHints(){
+    try{
+      var nodes = document.querySelectorAll('body *');
+      for (var i=0;i<nodes.length;i++){
+        var t = (nodes[i].textContent||'').trim().toLowerCase();
+        if (!t) continue;
+        if (/додайте\s+ще\s+4\s+сл/iu.test(t) || /добавьте\s+ещ|е\s+4\s+сл/iu.test(t)){
+          nodes[i].style.display = 'none';
+        }
+        if (/ошибк|помилк/iu.test(t) && /5/iu.test(t) && /актив/iu.test(t)){
+          nodes[i].style.display = 'none';
+        }
+      }
+      // Hide any modal that contains mistake-related content
+      var modals = document.querySelectorAll('.modal, [role="dialog"]');
+      for (var j=0;j<modals.length;j++){
+        var tt = (modals[j].textContent||'').toLowerCase();
+        if (/ошибк|помилк/iu.test(tt)){
+          modals[j].style.display = 'none';
+        }
+      }
+    }catch(e){}
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', hideActivationHints, {once:true});
+  }else{
+    hideActivationHints();
+  }
+})();
+
