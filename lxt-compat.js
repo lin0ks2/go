@@ -40,6 +40,7 @@
         b.addEventListener('click', function(){
           App.settings.dictsLangFilter = lg;
           App.saveSettings && App.saveSettings(App.settings);
+          if (typeof App.renderLangFlags==='function') App.renderLangFlags();
         });
         D.langFlags.appendChild(b);
       });
@@ -72,7 +73,7 @@
           var title = t.infoTitle || 'Info';
           var steps = t.infoSteps || [];
           var D = App.DOM || (App.DOM={});
-          var list = D.dictList || document.getElementById('dictList');
+          var list = document.getElementById('infoContent');
           var modalTitle = D.modalTitle || document.getElementById('modalTitle');
           if (modalTitle) modalTitle.textContent = title;
           if (list){
@@ -84,8 +85,7 @@
             }
             list.innerHTML=html;
           }
-          if (typeof openModal==='function') openModal();
-          else { var modal=document.getElementById('modal'); if (modal) modal.classList.remove('hidden'); }
+          var info = document.getElementById('infoModal'); if (info) info.classList.remove('hidden');
         });
       }
     }catch(e){}

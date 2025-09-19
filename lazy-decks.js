@@ -36,6 +36,7 @@
       if (typeof renderDictTitle==='function') renderDictTitle();
       if (typeof renderCard==='function') renderCard(true);
       if (App.Stats && typeof App.Stats.recomputeAndRender==='function') App.Stats.recomputeAndRender();
+      if (typeof App.renderLangFlags==='function') App.renderLangFlags();
     }catch(e){ console.error(e); }
   }
   window.App = window.App || {};
@@ -45,4 +46,16 @@
     return switchTo(key);
   };
   App.switchDeck = switchTo;
+})();
+
+
+;(()=>{
+  try{
+    // If English deck is present, set active to en_verbs ASAP
+    if (window.decks && (window.decks.en_verbs || window.decks['en_verbs'])){
+      window.App = window.App || {};
+      App.dictRegistry = App.dictRegistry || {};
+      App.dictRegistry.activeKey = 'en_verbs';
+    }
+  }catch(e){}
 })();
