@@ -44,9 +44,9 @@
       </div>
     </div>
     <div class="controls">
-      <button id="themeToggleBtn" class="iconBtn" title="Theme" aria-label="Theme">🌞</button>
-      <button id="langToggleBtn"  class="iconBtn" title="Language" aria-label="Language">🇺🇦</button>
-      <button id="dictsBtn"       class="iconBtn gear" title="Словники" aria-label="Словники">📚</button>
+      <button id="themeToggleBtn" class="iconBtn" title="" aria-label="">🌞</button>
+      <button id="langToggleBtn"  class="iconBtn" title="" aria-label="">🇺🇦</button>
+      <button id="dictsBtn"       class="iconBtn gear" title="" aria-label="">📚</button>
     </div>
   </header>
 
@@ -58,7 +58,7 @@
     <section class="card">
       <div class="topRow">
         <div class="stars" id="stars"></div>
-        <button id="favBtn" class="heart" title="Обране" aria-label="Додати в обране">♡</button>
+        <button id="favBtn" class="heart" title="" aria-label="">♡</button>
       </div>
 
       <div class="word" id="wordText">—</div>
@@ -66,9 +66,7 @@
 
       <div class="options" id="optionsRow"></div>
 
-      <div class="statsBar" id="statsBar">
-        Всього слів: 0 / Вивчено: 0 / Помилок: 0
-      </div>
+      <div class="statsBar" id="statsBar"></div>
     </section>
   
     <div class="extraActions" aria-label="Extra actions">
@@ -91,7 +89,7 @@
     <div id="infoModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
       <div class="modalFrame">
         <div class="modalHeader">
-          <div class="modalTitle" id="infoTitle">Info</div>
+          <div class="modalTitle" id="infoTitle"></div><!-- title from i18n --></div>
           <button class="iconBtn small" id="infoClose" aria-label="Close">✖️</button>
         </div>
         <div class="modalBody">
@@ -167,6 +165,7 @@
   <script src="ui.lifecycle.js"></script>
   <script src="ui.sets.done.js"></script>
   <script src="ui.fix.js"></script>
+  <script src="ui.info.js"></script>
   <script src="ui.startup.js"></script>
 
 </body>
