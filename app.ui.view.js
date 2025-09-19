@@ -1,4 +1,4 @@
-/* app.ui.view.js — stable build: milestones (learned only), clean UI, no errors modal */
+/* app.ui.view.js — stable build: milestones (learned only), clean UI, endless mode for mistakes/favorites */
 (function () {
   const App = window.App || (window.App = {});
   const D = App.DOM || (App.DOM = {});
@@ -182,40 +182,77 @@
   }
 
   // ────────────────────────────────────────────────────────────
+  // СЭМПЛЕР С ФОЛБЭКОМ (эндлес-режим для mistakes/favorites)
+  function pickIndexWithFallback(sub, fullKey) {
+    if (!Array.isArray(sub) || sub.length === 0) return -1;
+
+    // все ли на максимуме?
+    const starsMax = (App.Trainer && App.Trainer.starsMax) ? App.Trainer.starsMax() : 6;
+    const stars = (App.state && App.state.stars) || {};
+    let allLearned = true;
+    for (let i = 0; i < sub.length; i++) {
+      if ((stars[sub[i].id] || 0) < starsMax) { allLearned = false; break; }
+    }
+
+    if (allLearned) {
+      // равномерно тасуем, чтобы не заедало
+      return Math.floor(Math.random() * sub.length);
+    } else {
+      // обычный взвешенный выбор
+      return App.Trainer.sampleNextIndexWeighted(sub);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
   // render card
   function renderCard(force = false) {
     if (document.activeElement && document.activeElement.blur) {
       try { document.activeElement.blur(); } catch (e) {}
     }
     const deck = getActiveDeck();
+
+    // Если активный словарь пуст — мягкие фолбэки без зависаний
     if (!deck.length) {
-      if ((App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) || (App.dictRegistry.activeKey === 'fav' && App.Favorites)) {
-        const t = App.i18n ? App.i18n() : null;
-        const msg = t && t.allMistakesDone ? t.allMistakesDone :
-          (App.settings && App.settings.lang === 'uk' ? 'Усі помилки закриті!' : 'Все ошибки закрыты!');
-        if (D.wordEl) D.wordEl.textContent = msg;
-        if (D.hintEl) D.hintEl.textContent = '—';
-        if (D.optionsRow) D.optionsRow.innerHTML = '';
-        setTimeout(() => {
-          App.dictRegistry.activeKey = App.Decks.pickDefaultKey();
-          App.saveDictRegistry && App.saveDictRegistry();
-          renderDictList();
-          App.renderSetsBar();
-          renderCard(true);
-          updateStats();
-        }, 900);
-        return;
-      } else {
-        if (D.wordEl) D.wordEl.textContent = '—';
-        if (D.hintEl) D.hintEl.textContent = '—';
-        if (D.optionsRow) D.optionsRow.innerHTML = '';
-        renderStars();
+      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+
+      const trySwitch = (nextKey) => {
+        if (!nextKey) return false;
+        App.dictRegistry.activeKey = nextKey;
+        App.saveDictRegistry && App.saveDictRegistry();
+        renderDictList();
+        App.renderSetsBar && App.renderSetsBar();
+        renderCard(true);
         updateStats();
-        return;
+        return true;
+      };
+
+      // mistakes → favorites → default
+      if (key === 'mistakes') {
+        if (App.Favorites && (App.Favorites.deck()||[]).length >= 4) return void trySwitch('fav');
+        return void trySwitch(App.Decks.pickDefaultKey());
       }
+      // favorites → default
+      if (key === 'fav' || key === 'favorites') {
+        return void trySwitch(App.Decks.pickDefaultKey());
+      }
+
+      // Обычный словарь пуст — заглушка и стоп
+      if (D.wordEl) D.wordEl.textContent = '—';
+      if (D.hintEl) D.hintEl.textContent = '—';
+      if (D.optionsRow) D.optionsRow.innerHTML = '';
+      renderStars();
+      updateStats();
+      return;
     }
 
-    if (force || App.state.index === App.state.lastIndex) App.state.index = App.Trainer.sampleNextIndexWeighted(deck);
+    // выбор индекса с учётом endless-режима
+    if (force || App.state.index === App.state.lastIndex) {
+      const b = App.Sets ? App.Sets.activeBounds() : { start: 0, end: deck.length };
+      const sub = deck.slice(b.start, b.end);
+      const picked = pickIndexWithFallback(sub, App.dictRegistry.activeKey);
+      if (picked >= 0) App.state.index = b.start + picked;
+    }
+
     const w = current();
     if (App.state.lastShownWordId !== w.id) {
       App.state.totals.shown += 1;
@@ -239,7 +276,7 @@
           .filter(Boolean);
       } else {
         poolWords = deck.filter(x => x.id !== w.id)
-          .map(x => (App.settings.lang === 'ru' ? (x.ru || x.uk || x.translation || x.meaning) : (x.uk || x.ru || x.translation || x.meaning)))
+          .map(x => (App.settings.lang === 'ru') ? (x.ru || x.uk || x.translation || x.meaning) : (x.uk || x.ru || x.translation || x.meaning))
           .filter(Boolean);
       }
       const correct = (App.settings.lang === 'ru') ? (w.ru || w.uk || w.translation || w.meaning || '') : (w.uk || w.ru || w.translation || w.meaning || '');
@@ -269,7 +306,7 @@
   }
 
   // ────────────────────────────────────────────────────────────
-  // mistakes add helper — теперь корректно пишет в исходный словарь
+  // mistakes add helper — корректно пишет в исходный словарь
   function addToMistakesOnFailure(word) {
     if (!word) return;
     try {
@@ -468,12 +505,20 @@
   })(App.Milestones);
 
   // ────────────────────────────────────────────────────────────
-  // navigation
+  // navigation — endless-friendly
   function nextWord() {
     App.state.lastIndex = App.state.index;
     const b = App.Sets ? App.Sets.activeBounds() : { start: 0, end: getActiveDeck().length };
-    const sub = (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey) || []).slice(b.start, b.end);
-    App.state.index = b.start + App.Trainer.sampleNextIndexWeighted(sub);
+    const full = (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey) || []);
+    const sub = full.slice(b.start, b.end);
+
+    // если поднабор пуст — ререндер (renderCard выполнит фолбэк)
+    if (!sub.length) { return renderCard(true); }
+
+    const picked = pickIndexWithFallback(sub, App.dictRegistry.activeKey);
+    if (picked < 0) { return renderCard(true); }
+
+    App.state.index = b.start + picked;
     renderCard(true);
   }
 
