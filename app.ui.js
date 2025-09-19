@@ -88,28 +88,43 @@
     const actions=document.createElement('div'); actions.className='dictActions';
     const prevBtn=document.createElement('button'); prevBtn.className='iconOnly'; prevBtn.title=App.i18n().ttPreview; prevBtn.textContent='👁️'; prevBtn.addEventListener('click',(e)=>{e.stopPropagation(); App.Decks.openPreview(words,name.textContent);});
     actions.appendChild(prevBtn);
-    
     // --- КНОПКА УДАЛЕНИЯ ИЗБРАННОГО (только для fav) ---
-    if (key === 'fav' || key === 'favorites') {
-      const delBtn = document.createElement('button');
-      delBtn.className = 'iconOnly';
-      const t = (typeof App.i18n==='function') ? App.i18n() : {};
-      delBtn.title = t.favClearBtn || '';
-      delBtn.textContent = '🗑️';
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const msg = t.favClearConfirm || '';
-        if (msg && !confirm(msg)) return;
-        if (App.Favorites && typeof App.Favorites.clear === 'function') {
-          App.Favorites.clear();
-          try{ updateStats && updateStats(); }catch(e){}
-        }
-        try{ renderDictList(); }catch(e){}
-      });
-      actions.appendChild(delBtn);
-    }
-    // --- КОНЕЦ: КНОПКА УДАЛЕНИЯ ИЗБРАННОГО ---
+if (key === 'fav' || key === 'favorites') {
+  const delBtn = document.createElement('button');
+  delBtn.className = 'iconOnly';
+  delBtn.title = (App.settings.lang === 'ru')
+    ? 'Очистить «Избранное»'
+    : 'Очистити «Обране»';
+  delBtn.textContent = '🗑️';
+  delBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const msg = (App.settings.lang === 'ru')
+      ? 'Очистить «Избранное»? Это действие нельзя отменить.'
+      : 'Очистити «Обране»? Дію не можна скасувати.';
+    if (!confirm(msg)) return;
 
+    // очистка избранного
+    App.state.favorites = {};
+    App.saveState();
+
+    // переключение на "Существительные"
+    const nounKey = Object.keys(App.Decks.builtinKeys ? App.Decks.builtinKeys() : [])
+      .find(k => App.Decks.resolveNameByKey(k) === (App.settings.lang === 'ru' ? 'Существительные' : 'Іменники'));
+
+    if (nounKey) {
+      App.dictRegistry.activeKey = nounKey;
+    } else {
+      App.dictRegistry.activeKey = App.Decks.pickDefaultKey();
+    }
+    App.saveDictRegistry();
+
+    renderDictList();
+    renderCard(true);
+    updateStats();
+  });
+  actions.appendChild(delBtn);
+}
+// --- КОНЕЦ: КНОПКА УДАЛЕНИЯ ИЗБРАННОГО ---
     row.appendChild(flag); row.appendChild(name); row.appendChild(actions);
     row.addEventListener('click',()=>{ App.dictRegistry.activeKey=key; App.saveDictRegistry(); App.state.index=0; App.state.lastIndex=-1; renderDictList(); renderCard(true); updateStats(); });
     return row;
@@ -123,7 +138,7 @@
     for (const k of Object.keys(App.dictRegistry.user||{})) { if (accept(k)) host.appendChild(makeDictRow(k)); }
   }
 
-  function applyLang(){ const t=App.i18n(); if (D.titleEl&&D.titleEl.firstChild) D.titleEl.firstChild.textContent=t.appTitle+' '; if (D.appVerEl) D.appVerEl.textContent='v'+App.APP_VER; if (D.taglineEl) D.taglineEl.textContent=t.tagline; if (D.dictsBtn) D.dictsBtn.title = t.dictsHeader; if (D.modalTitleEl) D.modalTitleEl.textContent = t.dictsHeader || t.modalTitle || t.modalTitle || ''; renderDictList(); updateStats(); }
+  function applyLang(){ const t=App.i18n(); if (D.titleEl&&D.titleEl.firstChild) D.titleEl.firstChild.textContent=t.appTitle+' '; if (D.appVerEl) D.appVerEl.textContent='v'+App.APP_VER; if (D.taglineEl) D.taglineEl.textContent=t.tagline; if (D.dictsBtn) D.dictsBtn.title = t.dictsHeader; if (D.modalTitleEl) D.modalTitleEl.textContent = t.dictsHeader || t.modalTitle || 'Словари'; renderDictList(); updateStats(); }
 
   function openModal(){ if(D.modal) D.modal.classList.remove('hidden'); }
   function closeModal(){ if(D.modal) D.modal.classList.add('hidden'); }

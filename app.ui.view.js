@@ -49,8 +49,8 @@
         }
       }
 
-      const t = (typeof App.i18n === 'function') ? App.i18n() : { badgeSetWords:'', badgeLearned:'' };
-      host.textContent = (t.badgeSetWords||'') + ': ' + String(total) + ' / ' + (t.badgeLearned||'') + ': ' + String(learned);
+      const t = (typeof App.i18n === 'function') ? App.i18n() : { badgeSetWords:'Слов в наборе', badgeLearned:'Выучено' };
+      host.textContent = (t.badgeSetWords||'Слов в наборе') + ': ' + String(total) + ' / ' + (t.badgeLearned||'Выучено') + ': ' + String(learned);
     }catch(_){}
   }
 
@@ -128,12 +128,12 @@
 
   function addIDontKnowButton() {
     if (!D || !D.optionsRow) return;
-    const t = (typeof App.i18n === 'function') ? App.i18n() : { iDontKnow: '' };
+    const t = (typeof App.i18n === 'function') ? App.i18n() : { iDontKnow: 'Не знаю' };
     const wrap = document.createElement('div');
     wrap.className = 'idkWrapper';
     const btn = document.createElement('button');
     btn.className = 'ghost';
-    btn.textContent = t.iDontKnow || '';
+    btn.textContent = t.iDontKnow || 'Не знаю';
     btn.addEventListener('click', onIDontKnow);
     wrap.appendChild(btn);
     D.optionsRow.appendChild(wrap);
@@ -230,7 +230,7 @@
   }
 
   function updateStats() {
-    const t = App.i18n ? App.i18n() : { totalWords: '', learned: '' };
+    const t = App.i18n ? App.i18n() : { totalWords: 'Всего слов', learned: 'Выучено' };
     const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
     const fullDeck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(key) || []) : [];
     const repeats = (App.Trainer && typeof App.Trainer.starsMax === 'function') ? App.Trainer.starsMax() : ((App.state && App.state.repeats) || 3);
@@ -247,7 +247,7 @@
       for (let i = 0; i < fullDeck.length; i++) if ((starsMap[fullDeck[i].id] || 0) >= repeats) learned++;
     }
 
-    if (App.DOM && App.DOM.statsBar) App.DOM.statsBar.textContent = `${t.totalWords || ''}: ${fullDeck.length} / ${(t.learned || '')}: ${learned}`;
+    if (App.DOM && App.DOM.statsBar) App.DOM.statsBar.textContent = `${t.totalWords || 'Всего слов'}: ${fullDeck.length} / ${(t.learned || 'Выучено')}: ${learned}`;
   }
 
   function renderCard(force = false) {
@@ -576,9 +576,9 @@
     name.className = 'dictName';
     if (key === 'mistakes') {
       const t = (typeof App.i18n === 'function') ? App.i18n() : null;
-      name.textContent = (t && t.mistakesName) ? t.mistakesName : '';
+      name.textContent = (t && t.mistakesName) ? t.mistakesName : 'Мои ошибки';
     } else if (key === 'fav' || key === 'favorites') {
-      name.textContent = (t && t.favTitle) ? t.favTitle : '';
+      name.textContent = (App.settings.lang === 'ru') ? 'Избранное' : 'Обране';
     } else {
       name.textContent = App.Decks.resolveNameByKey(key);
     }
@@ -589,7 +589,7 @@
 
     const prevBtn = document.createElement('button');
     prevBtn.className = 'iconOnly';
-    prevBtn.title = (App.i18n().ttPreview || '');
+    prevBtn.title = (App.i18n().ttPreview || 'Предпросмотр');
     prevBtn.textContent = '👁️';
     prevBtn.addEventListener('click', (e) => { e.stopPropagation(); App.Decks.openPreview(words, name.textContent); });
     actions.appendChild(prevBtn);
@@ -597,11 +597,11 @@
     if (key === 'mistakes') {
       const delBtn = document.createElement('button');
       delBtn.className = 'iconOnly';
-      delBtn.title = (t.mistakesClearBtn || '');
+      delBtn.title = (App.settings.lang === 'ru') ? 'Очистить «Мои ошибки»' : 'Очистити «Мої помилки»';
       delBtn.textContent = '🗑️';
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const msg = (t.mistakesClearConfirm || '');
+        const msg = (App.settings.lang === 'ru') ? 'Очистить «Мои ошибки» для активного языка? Это действие нельзя отменить.' : 'Очистити «Мої помилки» для активної мови? Дію не можна скасувати.';
         if (!confirm(msg)) return;
         if (App.Mistakes && typeof App.Mistakes.clearActive==='function') App.Mistakes.clearActive();
         renderDictList(); App.renderSetsBar && App.renderSetsBar(); renderCard(true); updateStats();
@@ -612,11 +612,11 @@
     if (key === 'fav' || key === 'favorites') {
       const delBtn = document.createElement('button');
       delBtn.className = 'iconOnly';
-      delBtn.title = (t.favClearBtn || '');
+      delBtn.title = (App.settings.lang === 'ru') ? 'Очистить «Избранное»' : 'Очистити «Обране»';
       delBtn.textContent = '🗑️';
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const msg = (t.favClearConfirm || '');
+        const msg = (App.settings.lang === 'ru') ? 'Очистить «Избранное»? Это действие нельзя отменить.' : 'Очистити «Обране»? Дію не можна скасувати.';
         if (!confirm(msg)) return;
         App.clearFavoritesAll && App.clearFavoritesAll();
         App.dictRegistry.activeKey = App.Decks.pickDefaultKey();
@@ -699,7 +699,7 @@
     if (D.titleEl && D.titleEl.firstChild) D.titleEl.firstChild.textContent = (t.appTitle || 'App') + ' ';
     if (D.appVerEl) D.appVerEl.textContent = 'v' + (App.APP_VER || '1.0.0');
     if (D.taglineEl) D.taglineEl.textContent = t.tagline || '';
-    if (D.dictsBtn) D.dictsBtn.title = t.dictsHeader || '';
+    if (D.dictsBtn) D.dictsBtn.title = t.dictsHeader || 'Словари';
     renderDictList();
     App.renderSetsBar && App.renderSetsBar();
     updateStats();

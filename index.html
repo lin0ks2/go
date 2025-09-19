@@ -44,9 +44,9 @@
       </div>
     </div>
     <div class="controls">
-      <button id="themeToggleBtn" class="iconBtn" title="" aria-label="">🌞</button>
-      <button id="langToggleBtn"  class="iconBtn" title="" aria-label="">🇺🇦</button>
-      <button id="dictsBtn"       class="iconBtn gear" title="" aria-label="">📚</button>
+      <button id="themeToggleBtn" class="iconBtn" title="Theme" aria-label="Theme">🌞</button>
+      <button id="langToggleBtn"  class="iconBtn" title="Language" aria-label="Language">🇺🇦</button>
+      <button id="dictsBtn"       class="iconBtn gear" title="Словники" aria-label="Словники">📚</button>
     </div>
   </header>
 
@@ -58,7 +58,7 @@
     <section class="card">
       <div class="topRow">
         <div class="stars" id="stars"></div>
-        <button id="favBtn" class="heart" title="" aria-label="">♡</button>
+        <button id="favBtn" class="heart" title="Обране" aria-label="Додати в обране">♡</button>
       </div>
 
       <div class="word" id="wordText">—</div>
@@ -66,7 +66,9 @@
 
       <div class="options" id="optionsRow"></div>
 
-      <div class="statsBar" id="statsBar"></div>
+      <div class="statsBar" id="statsBar">
+        Всього слів: 0 / Вивчено: 0 / Помилок: 0
+      </div>
     </section>
   
     <div class="extraActions" aria-label="Extra actions">
@@ -89,7 +91,7 @@
     <div id="infoModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
       <div class="modalFrame">
         <div class="modalHeader">
-          <div class="modalTitle" id="infoTitle"></div><!-- title from i18n --></div>
+          <div class="modalTitle" id="infoTitle">Info</div>
           <button class="iconBtn small" id="infoClose" aria-label="Close">✖️</button>
         </div>
         <div class="modalBody">
@@ -123,24 +125,19 @@
   <script src="dicts.js?v=1.3.5"></script>
 
   <!-- словари -->
-  <script src="deck.de.js?v=1.3.5"></script>
-  <script src="deck.sr.js?v=1.3.5"></script>
-  <script src="deck.en.js?v=1.3.5"></script>
-  <script src="deck.fr.js?v=1.3.5"></script>
-  <script src="deck.es.js"></script>
   <!-- логика приложения (как в baseline, порядок сохранён) -->
-  <script src="app.core.js?v=1.3.5"></script>
-  <script src="app.decks.js?v=1.3.5"></script>
-  <script src="theme.js?v=1.3.5"></script>
-  <script src="app.trainer.js?v=1.3.5"></script>
-  <script src="app.mistakes.js?v=1"></script>
-  <script src="app.favorites.js"></script>
-  <script src="app.favorites.patch.js?v=1.3.5"></script>
-  <script src="app.ui.view.js?v=1.3.5"></script>
-  <script src="ui.options.safe.js"></script>
-  <script src="app.addon.sets.js?v=1.3.5"></script>
-  <script src="app.addon.penalties.js?v=1.3.5"></script>
-  <script src="app.addon.startup.js?v=1.3.5"></script>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   <!-- Milestone modal -->
   <div class="modal hidden" id="milestoneModal">
     <div class="backdrop"></div>
@@ -155,18 +152,21 @@
 
 
   <!-- Modular UI files -->
-  <script src="ui.bus.js"></script>
-  <script src="ui.state.js"></script>
-  <script src="ui.dicts.js"></script>
-  <script src="ui.sets.js"></script>
-  <script src="ui.progress.scope.js"></script>
-  <script src="ui.trainer.js"></script>
-  <script src="ui.stats.core.js"></script>
-  <script src="ui.lifecycle.js"></script>
-  <script src="ui.sets.done.js"></script>
-  <script src="ui.fix.js"></script>
-  <script src="ui.info.js"></script>
-  <script src="ui.startup.js"></script>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
+
+<script src="i18n.js?v=1"></script>
+<script src="dicts.js?v=1"></script>
+<script src="app.bundle.min.js?v=1"></script>
 </body>
 </html>
