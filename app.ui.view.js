@@ -1,23 +1,51 @@
 
-/* app.ui.view.js — TZ build: no double-add, endless for mistakes/fav, dedup variants */
+/* app.ui.view.js — P0+P1: dedup, endless, learned cache, pool cache, fewer saves */
 (function () {
   const App = window.App || (window.App = {});
   const D = App.DOM || (App.DOM = {});
 
-  // ─ helpers ─
-  function keyLang(key){
-    const m = String(key||'').match(/^([a-z]{2})_/i);
-    return m ? m[1].toLowerCase() : 'xx';
-  }
+  // ───── helpers ─────
+  function keyLang(key){ const m = String(key||'').match(/^([a-z]{2})_/i); return m ? m[1].toLowerCase() : 'xx'; }
   function langOfKey(k){ try{ const m = String(k||'').match(/^([a-z]{2})_/i); return m?m[1].toLowerCase():null; }catch(e){ return null; } }
   function isEndlessDict(key){ return key === 'mistakes' || key === 'fav' || key === 'favorites'; }
+  App.getActiveDictKey = function(){ return (App.dictRegistry && App.dictRegistry.activeKey) || null; };
 
-  // ─ title + set stats ─
+  // ───── learned cache (P1) ─────
+  const _learned = new Map(); // key -> { learned, total, ver }
+  function _calcLearnedForKey(key){
+    const max = App.Trainer.starsMax();
+    const deck = App.Decks.resolveDeckByKey(key) || [];
+    let learned = 0;
+    if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+      for (let i=0;i<deck.length;i++){
+        const w = deck[i]; const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+        if ((App.Mistakes.getStars(sk, w.id) || 0) >= max) learned++;
+      }
+    } else {
+      const stars = (App.state && App.state.stars) || {};
+      for (let i=0;i<deck.length;i++){ const w=deck[i]; if ((stars[w.id]||0) >= max) learned++; }
+    }
+    _learned.set(key, { learned, total: deck.length, ver: Date.now() });
+    return _learned.get(key);
+  }
+  function _touchLearned(key, wordId, prev, next, sourceKey){
+    const rec = _learned.get(key) || _calcLearnedForKey(key);
+    const max = App.Trainer.starsMax();
+    // prev/next — числовые значения
+    const was = (prev||0) >= max, now = (next||0) >= max;
+    if (was === now) return rec;
+    rec.learned += now ? 1 : -1;
+    _learned.set(key, rec);
+    return rec;
+  }
+  App.getLearnedCounts = function(key){ return _learned.get(key) || _calcLearnedForKey(key); };
+
+  // ───── title + set stats ─────
   function renderDictTitle(){
     try{
       const el = document.getElementById('dictActiveTitle');
       if (!el) return;
-      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+      const key = App.getActiveDictKey();
       const name = (App.Decks && App.Decks.resolveNameByKey) ? App.Decks.resolveNameByKey(key) : (key||'');
       el.textContent = name || '';
     }catch(_){}
@@ -28,7 +56,7 @@
       const host = document.getElementById('setStats');
       if (!host || !App.Sets) return;
       const b = App.Sets.activeBounds ? App.Sets.activeBounds() : {start:0,end:0};
-      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+      const key = App.getActiveDictKey();
       const deck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(key)||[]) : [];
       const sMax = (App.Trainer && App.Trainer.starsMax) ? App.Trainer.starsMax() : 6;
       const total = Math.max(0, (b.end - b.start));
@@ -53,67 +81,57 @@
       host.textContent = (t.badgeSetWords||'Слов в наборе') + ': ' + String(total) + ' / ' + (t.badgeLearned||'Выучено') + ': ' + String(learned);
     }catch(_){}
   }
+  App.renderSetStats = renderSetStats;
 
-  function _categoryRank(key){
-    try{
-      const k = String(key||'').toLowerCase().replace(/\s+/g,'');
-      const suf = k.replace(/^[a-z]{2}_/,'');
-      const order = { verbs:0, nouns:1, adjectives:2, adverbs:3, pronouns:4, prepositions:5, numbers:6, conjunctions:7, particles:8 };
-      return (suf in order) ? order[suf] : 999;
-    } catch(e){ return 999; }
+  function updateStats(){
+    const key = App.getActiveDictKey();
+    const t = App.i18n ? App.i18n() : { totalWords: 'Всего слов', learned: 'Выучено' };
+    const c = App.getLearnedCounts(key);
+    if (App.DOM && App.DOM.statsBar) App.DOM.statsBar.textContent = `${t.totalWords || 'Всего слов'}: ${c.total} / ${(t.learned || 'Выучено')}: ${c.learned}`;
   }
-  function _sortKeysByCategory(keys){
-    return (keys||[]).slice().sort((a,b)=>{
-      const ra=_categoryRank(a), rb=_categoryRank(b);
-      if (ra!==rb) return ra-rb;
-      return String(a).localeCompare(String(b));
-    });
-  }
+  App.updateStats = updateStats;
 
+  // ───── pool cache for mistakes (P0) ─────
+  const _poolCache = new Map(); // key: dictLang|sourceKey -> [words...]
+  function _poolKey(dictLang, srcKey){ return (dictLang||'??') + '|' + (srcKey||'--'); }
+  function _getCachedPool(dictLang, srcKey){ return _poolCache.get(_poolKey(dictLang, srcKey)); }
+  function _setCachedPool(dictLang, srcKey, arr){ _poolCache.set(_poolKey(dictLang, srcKey), arr); }
+  function _invalidatePools(){ _poolCache.clear(); }
+
+  // ───── render helpers ─────
   function getActiveDeck() {
     if (App.Trainer && typeof App.Trainer.safeGetDeckSlice === 'function') {
-      return App.Trainer.safeGetDeckSlice(App.dictRegistry.activeKey) || [];
+      return App.Trainer.safeGetDeckSlice(App.getActiveDictKey()) || [];
     }
     if (App.Trainer && typeof App.Trainer.getDeckSlice === 'function') {
-      const slice = App.Trainer.getDeckSlice(App.dictRegistry.activeKey) || [];
+      const slice = App.Trainer.getDeckSlice(App.getActiveDictKey()) || [];
       if (slice && slice.length) return slice;
     }
-    return App.Decks.resolveDeckByKey(App.dictRegistry.activeKey) || [];
+    return App.Decks.resolveDeckByKey(App.getActiveDictKey()) || [];
   }
-
   function current() {
     const deck = getActiveDeck();
     if (!deck.length) return { id: -1, word: '', uk: '', ru: '' };
     if (App.state.index < 0 || App.state.index >= deck.length) App.state.index = 0;
     return deck[App.state.index];
   }
-
   function decideModeForWord(w) {
     const succ = App.state.successes[w.id] || 0;
     let reverse = (succ >= App.Trainer.unlockThreshold()) ? (Math.random() < 0.5) : false;
-    try {
-      if (App.Penalties) {
-        const p = App.Penalties.reverseProbFor(w.id);
-        if (Math.random() < p) reverse = true;
-      }
-    } catch (e) {}
+    try { if (App.Penalties) { const p = App.Penalties.reverseProbFor(w.id); if (Math.random() < p) reverse = true; } } catch (e) {}
     return reverse;
   }
 
-  // ─ variants (with dedup) ─
+  // ───── options (dedup) ─────
   function drawOptions(correct, pool) {
-    // Build a unique set of distractors by final button text
     const uniq = [];
     const seen = new Set();
     for (let i=0;i<pool.length;i++){
-      const v = pool[i];
-      const s = String(v||'').trim();
+      const s = String(pool[i]||'').trim();
       if (!s || s === correct) continue;
       if (!seen.has(s)){ seen.add(s); uniq.push(s); }
-      if (uniq.length >= 12) break;
+      if (uniq.length >= 24) break;
     }
-    // pad to 3 unique distractors later using fallback in caller
-    const need = Math.max(0, 3 - uniq.length);
     const distractors = App.shuffle(uniq).slice(0, 3);
     const variants = App.shuffle([correct, ...distractors]);
     variants.forEach(v => {
@@ -139,29 +157,30 @@
     D.optionsRow.appendChild(wrap);
   }
 
-  // ─ mistakes pool (same source/dictLang only) ─
+  // ───── mistakes pool (same dictLang first) with cache ─────
   function getMistakesDistractorPool(currentWord) {
+    let srcKey = null;
+    try { srcKey = (App.Mistakes && App.Mistakes.sourceKeyFor) ? App.Mistakes.sourceKeyFor(currentWord.id) : (currentWord._mistakeSourceKey || null); } catch (_) {}
+    const dictLang = langOfKey(srcKey) || (App.settings && App.settings.dictsLangFilter) || null;
+
+    const cacheHit = _getCachedPool(dictLang, srcKey);
+    if (cacheHit) return cacheHit;
+
     const out = [];
     const seen = new Set();
     const push = (w) => {
       if (!w || !w.id || String(w.id) === String(currentWord.id)) return;
       const label = ((App.settings.lang === 'ru') ? (w.ru || w.uk) : (w.uk || w.ru)) || w.translation || w.meaning;
       if (!label) return;
-      const key = String(w.id) + '::' + String(label);
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push(w);
+      const k = String(w.id) + '::' + String(label);
+      if (seen.has(k)) return;
+      seen.add(k); out.push(w);
     };
-
-    let srcKey = null;
-    try { srcKey = (App.Mistakes && App.Mistakes.sourceKeyFor) ? App.Mistakes.sourceKeyFor(currentWord.id) : (currentWord._mistakeSourceKey || null); } catch (_) {}
-    const dictLang = langOfKey(srcKey) || null;
 
     if (srcKey) {
       const srcDeck = App.Decks.resolveDeckByKey(srcKey) || [];
       for (let i = 0; i < srcDeck.length; i++) push(srcDeck[i]);
     }
-
     if (out.length < 12 && dictLang) {
       const keys = (App.Decks && App.Decks.builtinKeys) ? App.Decks.builtinKeys() : Object.keys(window.decks || {});
       for (let k of keys) {
@@ -172,17 +191,16 @@
         if (out.length >= 24) break;
       }
     }
-
-    // mistakes deck (already filtered by dictLang/uiLang on module side)
     if (out.length < 24 && App.Mistakes && typeof App.Mistakes.deck === 'function') {
       const arr = App.Mistakes.deck() || [];
       for (let i = 0; i < arr.length; i++) push(arr[i]);
     }
 
+    _setCachedPool(dictLang, srcKey, out);
     return out;
   }
 
-  // ─ determine endless and pick index ─
+  // ───── endless ─────
   function allLearned(sub, key){
     const max = App.Trainer.starsMax();
     if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
@@ -197,19 +215,18 @@
     for (let i=0;i<sub.length;i++){ const w=sub[i]; if ((stars[w.id]||0) < max) return false; }
     return true;
   }
-
   function pickIndexWithFallback(sub, key) {
     if (!Array.isArray(sub) || sub.length === 0) return -1;
     if (isEndlessDict(key) && allLearned(sub, key)) {
-      return Math.floor(Math.random() * sub.length); // endless: keep training same set
+      return Math.floor(Math.random() * sub.length);
     }
     return App.Trainer.sampleNextIndexWeighted(sub);
   }
 
-  // ─ render & stats ─
+  // ───── stars & stats ─────
   function renderStars() {
     const w = current();
-    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const key = App.getActiveDictKey();
     const max = App.Trainer.starsMax();
     let score = 0;
     if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
@@ -229,39 +246,12 @@
     }
   }
 
-  function updateStats() {
-    const t = App.i18n ? App.i18n() : { totalWords: 'Всего слов', learned: 'Выучено' };
-    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
-    const fullDeck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(key) || []) : [];
-    const repeats = (App.Trainer && typeof App.Trainer.starsMax === 'function') ? App.Trainer.starsMax() : ((App.state && App.state.repeats) || 3);
-    let learned = 0;
-
-    if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
-      for (let i=0;i<fullDeck.length;i++){
-        const w = fullDeck[i]; if(!w) continue;
-        const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
-        if ((App.Mistakes.getStars(sk, w.id) || 0) >= repeats) learned++;
-      }
-    } else {
-      const starsMap = (App.state && App.state.stars) || {};
-      for (let i = 0; i < fullDeck.length; i++) if ((starsMap[fullDeck[i].id] || 0) >= repeats) learned++;
-    }
-
-    if (App.DOM && App.DOM.statsBar) App.DOM.statsBar.textContent = `${t.totalWords || 'Всего слов'}: ${fullDeck.length} / ${(t.learned || 'Выучено')}: ${learned}`;
-  }
-
+  // ───── render card ─────
   function renderCard(force = false) {
     if (document.activeElement && document.activeElement.blur) { try { document.activeElement.blur(); } catch (e) {} }
-    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const key = App.getActiveDictKey();
     const deck = getActiveDeck();
     if (!deck.length) {
-      if (key === 'mistakes') {
-        if (D.wordEl) D.wordEl.textContent = '—';
-        if (D.hintEl) D.hintEl.textContent = '—';
-        if (D.optionsRow) D.optionsRow.innerHTML = '';
-        renderStars(); updateStats();
-        return;
-      }
       if (D.wordEl) D.wordEl.textContent = '—';
       if (D.hintEl) D.hintEl.textContent = '—';
       if (D.optionsRow) D.optionsRow.innerHTML = '';
@@ -278,11 +268,10 @@
 
     const w = current();
     if (App.state.lastShownWordId !== w.id) {
-      App.state.totals.shown += 1;
+      App.state.totals.shown = (App.state.totals.shown||0) + 1;
       App.state.lastShownWordId = w.id;
       App.state.lastSeen[w.id] = Date.now();
       App.saveState();
-      // Не авто-адвансим в endless-словарях
       if (!isEndlessDict(key)) {
         try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
       }
@@ -294,7 +283,6 @@
     renderStars();
     D.optionsRow.innerHTML = '';
 
-    // Build pools with proper labels and dedup handled in drawOptions()
     if (!isReverse) {
       if (D.wordEl) D.wordEl.textContent = w.word;
       let poolWords;
@@ -324,7 +312,6 @@
     if (D.hintEl) D.hintEl.textContent = t.choose;
 
     if (D.favBtn) {
-      // Сердечко неактивно в fav и mistakes
       D.favBtn.disabled = (key === 'fav' || key === 'favorites' || key === 'mistakes');
       const dictKey = (key === 'mistakes')
         ? ((w && (w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)))) || 'mistakes')
@@ -334,33 +321,26 @@
 
     addIDontKnowButton();
     updateStats();
+    if (window.UIRefresh && window.UIRefresh.request) window.UIRefresh.request();
   }
 
-  // ─ add to mistakes with favorite priority ─
+  // ───── mistakes add helper with favorite priority ─────
   function addToMistakesOnFailure(word) {
     if (!word) return;
     try {
-      // приоритет избранного: если слово в избранном для своего sourceKey — не добавляем в МО
       const sk = (word._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(word.id)) || (App.dictRegistry && App.dictRegistry.activeKey));
-      if (App.isFavorite && App.isFavorite(sk, word.id)) return;
-
-      const active = (App && App.dictRegistry && App.dictRegistry.activeKey) || null;
-      let sourceKey;
-      if (active === 'mistakes') {
-        sourceKey = sk || 'mistakes';
-      } else {
-        sourceKey = active;
-      }
-      if (App && App.Mistakes && typeof App.Mistakes.add === 'function') {
-        App.Mistakes.add(String(word.id), word, sourceKey);
-      }
+      if (App.isFavorite && App.isFavorite(sk, word.id)) return; // priority: favorite > mistakes
+      const active = App.getActiveDictKey();
+      const sourceKey = (active === 'mistakes') ? (sk || 'mistakes') : active;
+      if (App && App.Mistakes && typeof App.Mistakes.add === 'function') App.Mistakes.add(String(word.id), word, sourceKey);
+      _invalidatePools(); // mistakes changed
     } catch (e) {}
   }
 
-  // ─ answers ─
+  // ───── answers ─────
   function onChoice(btn, correct) {
     const w = current();
-    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const key = App.getActiveDictKey();
     const max = App.Trainer.starsMax();
 
     if (correct) {
@@ -369,54 +349,55 @@
 
       if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
         const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
-        const cur = App.Mistakes.getStars(sk, w.id) || 0;
-        App.Mistakes.setStars(sk, w.id, Math.max(0, Math.min(max, cur+1)));
+        const prev = App.Mistakes.getStars(sk, w.id) || 0;
+        const next = Math.max(0, Math.min(max, prev+1));
+        App.Mistakes.setStars(sk, w.id, next);
+        _touchLearned('mistakes', w.id, prev, next, sk);
       } else {
-        const cur = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
-        App.state.stars[w.id] = Math.max(0, Math.min(max, cur+1));
+        const prev = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
+        const next = Math.max(0, Math.min(max, prev+1));
+        App.state.stars[w.id] = next;
         App.state.successes[w.id] = (App.state.successes[w.id] || 0) + 1;
+        _touchLearned(key, w.id, prev, next);
       }
 
       App.saveState();
-      if (!isEndlessDict(key)) {
-        try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
-      }
+      if (!isEndlessDict(key)) { try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){} }
       renderStars();
       updateStats();
-
-      // milestones only "learned" left as-is — не трогаем
-
-      setTimeout(nextWord, 500);
+      if (window.UIRefresh && window.UIRefresh.request) window.UIRefresh.request();
+      setTimeout(nextWord, 400);
       return;
     }
 
     // wrong
-    btn.classList.add('wrong');
-    btn.disabled = true;
+    btn.classList.add('wrong'); btn.disabled = true;
 
     if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
       const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
-      const cur = App.Mistakes.getStars(sk, w.id) || 0;
-      App.Mistakes.setStars(sk, w.id, Math.max(0, Math.min(max, cur-1)));
+      const prev = App.Mistakes.getStars(sk, w.id) || 0;
+      const next = Math.max(0, Math.min(max, prev-1));
+      App.Mistakes.setStars(sk, w.id, next);
+      _touchLearned('mistakes', w.id, prev, next, sk);
     } else {
-      const cur = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
-      App.state.stars[w.id] = Math.max(0, Math.min(max, cur-1));
+      const prev = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
+      const next = Math.max(0, Math.min(max, prev-1));
+      App.state.stars[w.id] = next;
+      _touchLearned(key, w.id, prev, next);
     }
 
-    App.state.totals.errors += 1;
+    App.state.totals.errors = (App.state.totals.errors||0) + 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
 
-    // приоритет избранного: если слово уже в избранном — не добавляем в МО
-    if (!(App.isFavorite && App.isFavorite((w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)) || (App.dictRegistry && App.dictRegistry.activeKey)), w.id))) {
-      addToMistakesOnFailure(w);
-    }
+    // не добавляем в МО, если уже в избранном
+    const sk = (w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)) || key);
+    if (!(App.isFavorite && App.isFavorite(sk, w.id))) addToMistakesOnFailure(w);
 
     App.saveState();
-    if (!isEndlessDict(key)) {
-      try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
-    }
+    if (!isEndlessDict(key)) { try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){} }
     renderStars();
     updateStats();
+    if (window.UIRefresh && window.UIRefresh.request) window.UIRefresh.request();
   }
 
   function onIDontKnow() {
@@ -424,36 +405,37 @@
     const c = D.optionsRow.querySelector('button.optionBtn[data-correct="1"]');
     if (c) c.classList.add('correct');
     D.optionsRow.querySelectorAll('button.optionBtn').forEach(b => b.disabled = true);
-    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const key = App.getActiveDictKey();
     const max = App.Trainer.starsMax();
 
     if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
       const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
-      const cur = App.Mistakes.getStars(sk, w.id) || 0;
-      App.Mistakes.setStars(sk, w.id, Math.max(0, Math.min(max, cur-1)));
+      const prev = App.Mistakes.getStars(sk, w.id) || 0;
+      const next = Math.max(0, Math.min(max, prev-1));
+      App.Mistakes.setStars(sk, w.id, next);
+      _touchLearned('mistakes', w.id, prev, next, sk);
     } else {
-      const cur = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
-      App.state.stars[w.id] = Math.max(0, Math.min(max, cur-1));
+      const prev = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
+      const next = Math.max(0, Math.min(max, prev-1));
+      App.state.stars[w.id] = next;
+      _touchLearned(key, w.id, prev, next);
     }
 
-    App.state.totals.errors += 1;
+    App.state.totals.errors = (App.state.totals.errors||0) + 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
 
-    // приоритет избранного: если слово в избранном — не добавляем в МО
-    if (!(App.isFavorite && App.isFavorite((w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)) || (App.dictRegistry && App.dictRegistry.activeKey)), w.id))) {
-      addToMistakesOnFailure(w);
-    }
+    const sk = (w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)) || key);
+    if (!(App.isFavorite && App.isFavorite(sk, w.id))) addToMistakesOnFailure(w);
 
     App.saveState();
-    if (!isEndlessDict(key)) {
-      try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
-    }
+    if (!isEndlessDict(key)) { try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){} }
     renderStars();
     updateStats();
-    setTimeout(function () { nextWord(); }, 700);
+    if (window.UIRefresh && window.UIRefresh.request) window.UIRefresh.request();
+    setTimeout(function () { nextWord(); }, 600);
   }
 
-  // ─ sets bar ─
+  // ───── sets bar ─────
   App.renderSetsBar = function () {
     const host = document.getElementById('setsBar');
     if (!host) return;
@@ -485,10 +467,10 @@
     App.saveState && App.saveState();
   };
 
-  // ─ navigation ─
+  // ───── navigation ─────
   function nextWord() {
     App.state.lastIndex = App.state.index;
-    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const key = App.getActiveDictKey();
     const b = App.Sets ? App.Sets.activeBounds() : { start: 0, end: getActiveDeck().length };
     const full = (App.Decks.resolveDeckByKey(key) || []);
     const sub = full.slice(b.start, b.end);
@@ -499,11 +481,10 @@
     renderCard(true);
   }
 
-  // ─ favorites ─
+  // ───── favorites (heart) ─────
   function toggleFav() {
     const w = current();
-    const activeKey = (App.dictRegistry && App.dictRegistry.activeKey) || null;
-    // Если мы в mistakes — используем sourceKey слова, а не 'mistakes'
+    const activeKey = App.getActiveDictKey();
     const dictKey = (activeKey === 'mistakes')
       ? ((w && (w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)))) || 'mistakes')
       : activeKey;
@@ -514,57 +495,14 @@
       D.favBtn.style.transform = 'scale(1.2)';
       setTimeout(() => { D.favBtn.style.transform = 'scale(1)'; }, 140);
     }
-    // Перерисовать списки — так появится/обновится «Избранное»
     if (typeof App.renderSetsBar === 'function') App.renderSetsBar();
   }
 
-  // ─ dicts list, flags, bootstrap etc. (минимальные изменения) ─
-  function renderDictList() {
-    const host = D.dictListHost;
-    if (!host) return;
-    host.innerHTML = '';
-
-    (function appendMistakesRowFirst() {
-      try {
-        const row = makeDictRow('mistakes');
-        if (!row) return;
-        host.appendChild(row);
-        let cnt = 0;
-        if (App.Mistakes && typeof App.Mistakes.count === 'function') cnt = App.Mistakes.count();
-        if (cnt < 4) {
-          row.classList.add('disabled');
-          row.setAttribute('aria-disabled', 'true');
-        }
-      } catch (e) {}
-    })();
-
-    if (canShowFav()) host.appendChild(makeDictRow('fav'));
-
-    (function(){
-      const all = App.Decks.builtinKeys();
-      const lg = (App.settings && App.settings.dictsLangFilter) || null;
-      let keys = all;
-      if (lg) keys = all.filter(k => keyLang(k) === lg);
-      keys = _sortKeysByCategory(keys);
-      keys.forEach(k => host.appendChild(makeDictRow(k)));
-    })();
-
-    for (const k of Object.keys(App.dictRegistry.user || {})) host.appendChild(makeDictRow(k));
-  }
-
-  function canShowFav() {
-    try {
-      App.migrateFavoritesToV2 && App.migrateFavoritesToV2();
-      const v2 = (App.state && App.state.favorites_v2) || {};
-      let cnt = 0; Object.keys(v2).forEach(k => { cnt += Object.keys(v2[k] || {}).filter(x => v2[k][x]).length; });
-      return cnt >= 4;
-    } catch (e) { return false; }
-  }
-
+  // ───── dict list & bindings (unchanged structurally) ─────
   function makeDictRow(key) {
     const words = App.Decks.resolveDeckByKey(key) || [];
     const row = document.createElement('div');
-    row.className = 'dictRow' + (key === App.dictRegistry.activeKey ? ' active' : '');
+    row.className = 'dictRow' + (key === App.getActiveDictKey() ? ' active' : '');
     row.dataset.key = key;
 
     const flag = document.createElement('div');
@@ -604,6 +542,8 @@
         const msg = (App.settings.lang === 'ru') ? 'Очистить «Мои ошибки» для активного языка? Это действие нельзя отменить.' : 'Очистити «Мої помилки» для активної мови? Дію не можна скасувати.';
         if (!confirm(msg)) return;
         if (App.Mistakes && typeof App.Mistakes.clearActive==='function') App.Mistakes.clearActive();
+        // Invalidate caches
+        _invalidatePools(); _learned.delete('mistakes');
         renderDictList(); App.renderSetsBar && App.renderSetsBar(); renderCard(true); updateStats();
       });
       actions.appendChild(delBtn);
@@ -619,6 +559,7 @@
         const msg = (App.settings.lang === 'ru') ? 'Очистить «Избранное»? Это действие нельзя отменить.' : 'Очистити «Обране»? Дію не можна скасувати.';
         if (!confirm(msg)) return;
         App.clearFavoritesAll && App.clearFavoritesAll();
+        _learned.delete('fav'); _learned.delete('favorites');
         App.dictRegistry.activeKey = App.Decks.pickDefaultKey();
         App.saveDictRegistry();
         renderDictList(); App.renderSetsBar(); renderCard(true); updateStats();
@@ -626,68 +567,80 @@
       actions.appendChild(delBtn);
     }
 
-    row.appendChild(flag);
-    row.appendChild(name);
-    row.appendChild(actions);
+    row.appendChild(flag); row.appendChild(name); row.appendChild(actions);
 
     row.addEventListener('click', () => {
       if (row.classList.contains('disabled')) return;
       App.dictRegistry.activeKey = key;
       App.saveDictRegistry();
-
-      App.state.index = 0;
-      App.state.lastIndex = -1;
-      renderDictList();
-      App.renderSetsBar();
-      renderCard(true);
-      updateStats();
+      App.state.index = 0; App.state.lastIndex = -1;
+      _invalidatePools();
+      renderDictList(); App.renderSetsBar(); renderCard(true); updateStats();
     });
 
     return row;
   }
 
-  const FLAG_EMOJI = { ru:'🇷🇺', uk:'🇺🇦', en:'🇬🇧', de:'🇩🇪', es:'🇪🇸', fr:'🇫🇷', it:'🇮🇹', pl:'🇵🇱', sr:'🇷🇸', tr:'🇹🇷' };
-  App.renderLangFlags = function(){
-    if (!D.langFlags) return;
-    const set = new Set();
-    try {
-      const keys = (App.Decks && typeof App.Decks.builtinKeys === 'function')
-        ? App.Decks.builtinKeys()
-        : Object.keys(window.decks || {});
-      keys.forEach(k => {
-        const m = String(k||'').match(/^([a-z]{2})_/i);
-        const lg = m ? m[1].toLowerCase() : null;
-        if (lg) set.add(lg);
-      });
-    } catch(_) {}
-    const langs = Array.from(set);
-    D.langFlags.innerHTML = '';
-    if (!langs.length) return;
-    const active = App.settings.dictsLangFilter || null;
-    langs.forEach(lg => {
-      const b = document.createElement('button');
-      b.className = 'flagBtn' + ((active===lg)?' active':'');
-      b.title = (App.i18n()['lang_'+lg] || lg.toUpperCase());
-      b.textContent = FLAG_EMOJI[lg] || lg.toUpperCase();
-      b.addEventListener('click', () => {
-        App.settings.dictsLangFilter = lg;
-        App.saveSettings && App.saveSettings(App.settings);
-        renderDictList();
-        App.renderLangFlags();
-      });
-      D.langFlags.appendChild(b);
-    });
-  };
+  function renderDictList() {
+    const host = D.dictListHost;
+    if (!host) return;
+    host.innerHTML = '';
 
-  // bootstrap/bindings
+    (function appendMistakesRowFirst() {
+      try {
+        const row = makeDictRow('mistakes'); if (!row) return;
+        host.appendChild(row);
+        let cnt = 0;
+        if (App.Mistakes && typeof App.Mistakes.count === 'function') cnt = App.Mistakes.count();
+        if (cnt < 4) { row.classList.add('disabled'); row.setAttribute('aria-disabled', 'true'); }
+      } catch (e) {}
+    })();
+
+    if (canShowFav()) host.appendChild(makeDictRow('fav'));
+
+    (function(){
+      const all = App.Decks.builtinKeys();
+      const lg = (App.settings && App.settings.dictsLangFilter) || null;
+      let keys = all;
+      if (lg) keys = all.filter(k => keyLang(k) === lg);
+      keys = _sortKeysByCategory(keys);
+      keys.forEach(k => host.appendChild(makeDictRow(k)));
+    })();
+
+    for (const k of Object.keys(App.dictRegistry.user || {})) host.appendChild(makeDictRow(k));
+  }
+
+  function _categoryRank(key){
+    try{
+      const k = String(key||'').toLowerCase().replace(/\s+/g,'');
+      const suf = k.replace(/^[a-z]{2}_/,'');
+      const order = { verbs:0, nouns:1, adjectives:2, adverbs:3, pronouns:4, prepositions:5, numbers:6, conjunctions:7, particles:8 };
+      return (suf in order) ? order[suf] : 999;
+    } catch(e){ return 999; }
+  }
+  function _sortKeysByCategory(keys){
+    return (keys||[]).slice().sort((a,b)=>{
+      const ra=_categoryRank(a), rb=_categoryRank(b);
+      if (ra!==rb) return ra-rb;
+      return String(a).localeCompare(String(b));
+    });
+  }
+  function canShowFav() {
+    try {
+      App.migrateFavoritesToV2 && App.migrateFavoritesToV2();
+      const v2 = (App.state && App.state.favorites_v2) || {};
+      let cnt = 0; Object.keys(v2).forEach(k => { cnt += Object.keys(v2[k] || {}).filter(x => v2[k][x]).length; });
+      return cnt >= 4;
+    } catch (e) { return false; }
+  }
+
+  // ───── bootstrap & header ─────
   const _origBootstrap = App.bootstrap || function(){};
   App.bootstrap = function () {
     _origBootstrap();
     if (!App.state || !App.state.totals) App.state.totals = {};
     App.state.totals.sessionErrors = 0;
-
     if (!App.dictRegistry.activeKey) { App.dictRegistry.activeKey = App.Decks.pickDefaultKey(); App.saveDictRegistry(); }
-
     applyLang();
     App.applyTheme && App.applyTheme();
     bindHeaderButtons();
@@ -716,6 +669,7 @@
         App.saveSettings(App.settings);
         applyLang();
         App.applyTheme && App.applyTheme();
+        _invalidatePools();
         renderCard(true);
       });
     }
@@ -726,8 +680,8 @@
       };
       D.themeToggleBtn.addEventListener('click', () => {
         const cur = document.documentElement.getAttribute('data-theme') || 'light';
-        const next = (cur === 'dark') ? 'light' : 'dark';
-        App.settings.theme = next;
+        const next = (cur === 'dark') ? 'light' : 'light' === cur ? 'dark' : 'light';
+        App.settings.theme = next === true ? 'dark' : next;
         App.saveSettings(App.settings);
         App.applyTheme && App.applyTheme();
         updateIcon();
