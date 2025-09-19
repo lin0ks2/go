@@ -1,81 +1,63 @@
-/* app.ui.view.js — stable build: mistakes + milestones + calm motivation */
+
+/* app.ui.view.js — TZ build: no double-add, endless for mistakes/fav, dedup variants */
 (function () {
   const App = window.App || (window.App = {});
   const D = App.DOM || (App.DOM = {});
 
-  // ────────────────────────────────────────────────────────────
-  // helpers
-
-  // ───────────────── dictionary title + set stats ─────────────────
-  function renderDictTitle(){
-    try{
-      const el = document.getElementById('dictActiveTitle');
-      if (!el) return;
-      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
-      const name = (App.Decks && App.Decks.resolveNameByKey) ? App.Decks.resolveNameByKey(key) : (key||'');
-      el.textContent = name || '';
-    try{document.dispatchEvent(new CustomEvent('dict:title:updated',{detail:{key:(App.dictRegistry&&App.dictRegistry.activeKey)||null}}));}catch(e){}
-    }catch(_){};
-  }
-  function renderSetStats(){
-    try{
-      const host = document.getElementById('setStats');
-      if (!host || !App.Sets) return;
-      const b = App.Sets.activeBounds ? App.Sets.activeBounds() : {start:0,end:0};
-      const deck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey)||[]) : [];
-      const sMax = (App.Trainer && App.Trainer.starsMax) ? App.Trainer.starsMax() : 6;
-      const stars = (App.state && App.state.stars) || {};
-      const total = Math.max(0, (b.end - b.start));
-      let learned = 0;
-      for (let i=b.start; i<b.end; i++){
-        const w = deck[i]; if (!w) continue;
-        if ((stars[w.id]||0) >= sMax) learned++;
-      }
-      const t = (typeof App.i18n === 'function') ? App.i18n() : { badgeSetWords:'Слов в наборе', badgeLearned:'Выучено' };
-      host.textContent = (t.badgeSetWords||'Слов в наборе') + ': ' + String(total) + ' / ' + (t.badgeLearned||'Выучено') + ': ' + String(learned);
-    }catch(_){}
-  }
-
-  
-  // ───────────────── dictionary title + set stats ─────────────────
-  function renderDictTitle(){
-    try{
-      const el = document.getElementById('dictActiveTitle');
-      if (!el) return;
-      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
-      const name = (App.Decks && App.Decks.resolveNameByKey) ? App.Decks.resolveNameByKey(key) : (key||'');
-      el.textContent = name || '';
-    try{document.dispatchEvent(new CustomEvent('dict:title:updated',{detail:{key:(App.dictRegistry&&App.dictRegistry.activeKey)||null}}));}catch(e){}
-    }catch(_){};
-  }
-  function renderSetStats(){
-    try{
-      const host = document.getElementById('setStats');
-      if (!host || !App.Sets) return;
-      const b = App.Sets.activeBounds ? App.Sets.activeBounds() : {start:0,end:0};
-      const deck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey)||[]) : [];
-      const sMax = (App.Trainer && App.Trainer.starsMax) ? App.Trainer.starsMax() : 6;
-      const stars = (App.state && App.state.stars) || {};
-      const total = Math.max(0, (b.end - b.start));
-      let learned = 0;
-      for (let i=b.start; i<b.end; i++){
-        const w = deck[i]; if (!w) continue;
-        if ((stars[w.id]||0) >= sMax) learned++;
-      }
-      const t = (typeof App.i18n === 'function') ? App.i18n() : { badgeSetWords:'Слов в наборе', badgeLearned:'Выучено' };
-      host.textContent = (t.badgeSetWords||'Слов в наборе') + ': ' + String(total) + ' / ' + (t.badgeLearned||'Выучено') + ': ' + String(learned);
-    }catch(_){}
-  }
-function keyLang(key){
+  // ─ helpers ─
+  function keyLang(key){
     const m = String(key||'').match(/^([a-z]{2})_/i);
     return m ? m[1].toLowerCase() : 'xx';
   }
-  // Order dictionaries within one language the same as German:
-  // verbs, nouns, adjectives, adverbs, pronouns, prepositions, numbers, conjunctions, particles
+  function langOfKey(k){ try{ const m = String(k||'').match(/^([a-z]{2})_/i); return m?m[1].toLowerCase():null; }catch(e){ return null; } }
+  function isEndlessDict(key){ return key === 'mistakes' || key === 'fav' || key === 'favorites'; }
+
+  // ─ title + set stats ─
+  function renderDictTitle(){
+    try{
+      const el = document.getElementById('dictActiveTitle');
+      if (!el) return;
+      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+      const name = (App.Decks && App.Decks.resolveNameByKey) ? App.Decks.resolveNameByKey(key) : (key||'');
+      el.textContent = name || '';
+    }catch(_){}
+  }
+
+  function renderSetStats(){
+    try{
+      const host = document.getElementById('setStats');
+      if (!host || !App.Sets) return;
+      const b = App.Sets.activeBounds ? App.Sets.activeBounds() : {start:0,end:0};
+      const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+      const deck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(key)||[]) : [];
+      const sMax = (App.Trainer && App.Trainer.starsMax) ? App.Trainer.starsMax() : 6;
+      const total = Math.max(0, (b.end - b.start));
+      let learned = 0;
+
+      if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+        for (let i=b.start;i<b.end;i++){
+          const w = deck[i]; if(!w) continue;
+          const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+          const sc = App.Mistakes.getStars(sk, w.id);
+          if (sc >= sMax) learned++;
+        }
+      } else {
+        const stars = (App.state && App.state.stars) || {};
+        for (let i=b.start;i<b.end;i++){
+          const w = deck[i]; if(!w) continue;
+          if ((stars[w.id]||0) >= sMax) learned++;
+        }
+      }
+
+      const t = (typeof App.i18n === 'function') ? App.i18n() : { badgeSetWords:'Слов в наборе', badgeLearned:'Выучено' };
+      host.textContent = (t.badgeSetWords||'Слов в наборе') + ': ' + String(total) + ' / ' + (t.badgeLearned||'Выучено') + ': ' + String(learned);
+    }catch(_){}
+  }
+
   function _categoryRank(key){
     try{
       const k = String(key||'').toLowerCase().replace(/\s+/g,'');
-      const suf = k.replace(/^[a-z]{2}_/,''); // e.g. "sr_verbs" -> "verbs"
+      const suf = k.replace(/^[a-z]{2}_/,'');
       const order = { verbs:0, nouns:1, adjectives:2, adverbs:3, pronouns:4, prepositions:5, numbers:6, conjunctions:7, particles:8 };
       return (suf in order) ? order[suf] : 999;
     } catch(e){ return 999; }
@@ -87,7 +69,6 @@ function keyLang(key){
       return String(a).localeCompare(String(b));
     });
   }
-
 
   function getActiveDeck() {
     if (App.Trainer && typeof App.Trainer.safeGetDeckSlice === 'function') {
@@ -119,8 +100,21 @@ function keyLang(key){
     return reverse;
   }
 
+  // ─ variants (with dedup) ─
   function drawOptions(correct, pool) {
-    const distractors = App.shuffle(pool).slice(0, 3);
+    // Build a unique set of distractors by final button text
+    const uniq = [];
+    const seen = new Set();
+    for (let i=0;i<pool.length;i++){
+      const v = pool[i];
+      const s = String(v||'').trim();
+      if (!s || s === correct) continue;
+      if (!seen.has(s)){ seen.add(s); uniq.push(s); }
+      if (uniq.length >= 12) break;
+    }
+    // pad to 3 unique distractors later using fallback in caller
+    const need = Math.max(0, 3 - uniq.length);
+    const distractors = App.shuffle(uniq).slice(0, 3);
     const variants = App.shuffle([correct, ...distractors]);
     variants.forEach(v => {
       const b = document.createElement('button');
@@ -145,16 +139,89 @@ function keyLang(key){
     D.optionsRow.appendChild(wrap);
   }
 
+  // ─ mistakes pool (same source/dictLang only) ─
+  function getMistakesDistractorPool(currentWord) {
+    const out = [];
+    const seen = new Set();
+    const push = (w) => {
+      if (!w || !w.id || String(w.id) === String(currentWord.id)) return;
+      const label = ((App.settings.lang === 'ru') ? (w.ru || w.uk) : (w.uk || w.ru)) || w.translation || w.meaning;
+      if (!label) return;
+      const key = String(w.id) + '::' + String(label);
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(w);
+    };
+
+    let srcKey = null;
+    try { srcKey = (App.Mistakes && App.Mistakes.sourceKeyFor) ? App.Mistakes.sourceKeyFor(currentWord.id) : (currentWord._mistakeSourceKey || null); } catch (_) {}
+    const dictLang = langOfKey(srcKey) || null;
+
+    if (srcKey) {
+      const srcDeck = App.Decks.resolveDeckByKey(srcKey) || [];
+      for (let i = 0; i < srcDeck.length; i++) push(srcDeck[i]);
+    }
+
+    if (out.length < 12 && dictLang) {
+      const keys = (App.Decks && App.Decks.builtinKeys) ? App.Decks.builtinKeys() : Object.keys(window.decks || {});
+      for (let k of keys) {
+        if (langOfKey(k) !== dictLang) continue;
+        if (k === srcKey) continue;
+        const d = App.Decks.resolveDeckByKey(k) || [];
+        for (let i = 0; i < d.length; i++) push(d[i]);
+        if (out.length >= 24) break;
+      }
+    }
+
+    // mistakes deck (already filtered by dictLang/uiLang on module side)
+    if (out.length < 24 && App.Mistakes && typeof App.Mistakes.deck === 'function') {
+      const arr = App.Mistakes.deck() || [];
+      for (let i = 0; i < arr.length; i++) push(arr[i]);
+    }
+
+    return out;
+  }
+
+  // ─ determine endless and pick index ─
+  function allLearned(sub, key){
+    const max = App.Trainer.starsMax();
+    if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+      for (let i=0;i<sub.length;i++){
+        const w = sub[i];
+        const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+        if ((App.Mistakes.getStars(sk, w.id) || 0) < max) return false;
+      }
+      return true;
+    }
+    const stars = (App.state && App.state.stars) || {};
+    for (let i=0;i<sub.length;i++){ const w=sub[i]; if ((stars[w.id]||0) < max) return false; }
+    return true;
+  }
+
+  function pickIndexWithFallback(sub, key) {
+    if (!Array.isArray(sub) || sub.length === 0) return -1;
+    if (isEndlessDict(key) && allLearned(sub, key)) {
+      return Math.floor(Math.random() * sub.length); // endless: keep training same set
+    }
+    return App.Trainer.sampleNextIndexWeighted(sub);
+  }
+
+  // ─ render & stats ─
   function renderStars() {
     const w = current();
-    try {
-      if (App.dictRegistry.activeKey === 'mistakes' && App.Mistakes) App.Mistakes.onShow(w.id);
-    } catch (e) {}
-    const score = App.clamp(App.state.stars[w.id] || 0, 0, App.Trainer.starsMax());
-    const host = D.starsEl;
-    if (!host) return;
+    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const max = App.Trainer.starsMax();
+    let score = 0;
+    if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+      const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+      score = App.Mistakes.getStars(sk, w.id);
+    } else {
+      score = (App.state.stars[w.id] || 0);
+    }
+    score = Math.max(0, Math.min(max, score));
+    const host = D.starsEl; if (!host) return;
     host.innerHTML = '';
-    for (let i = 0; i < App.Trainer.starsMax(); i++) {
+    for (let i = 0; i < max; i++) {
       const s = document.createElement('span');
       s.className = 'starIcon' + (i < score ? ' filled' : '');
       s.textContent = '★';
@@ -167,106 +234,88 @@ function keyLang(key){
     const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
     const fullDeck = (App.Decks && App.Decks.resolveDeckByKey) ? (App.Decks.resolveDeckByKey(key) || []) : [];
     const repeats = (App.Trainer && typeof App.Trainer.starsMax === 'function') ? App.Trainer.starsMax() : ((App.state && App.state.repeats) || 3);
-    const starsMap = (App.state && App.state.stars) || {};
     let learned = 0;
-    for (let i = 0; i < fullDeck.length; i++) if ((starsMap[fullDeck[i].id] || 0) >= repeats) learned++;
+
+    if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+      for (let i=0;i<fullDeck.length;i++){
+        const w = fullDeck[i]; if(!w) continue;
+        const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+        if ((App.Mistakes.getStars(sk, w.id) || 0) >= repeats) learned++;
+      }
+    } else {
+      const starsMap = (App.state && App.state.stars) || {};
+      for (let i = 0; i < fullDeck.length; i++) if ((starsMap[fullDeck[i].id] || 0) >= repeats) learned++;
+    }
+
     if (App.DOM && App.DOM.statsBar) App.DOM.statsBar.textContent = `${t.totalWords || 'Всего слов'}: ${fullDeck.length} / ${(t.learned || 'Выучено')}: ${learned}`;
   }
 
-  function getMistakesDistractorPool(currentWord) {
-    try {
-      const NEED = 3;
-      const uniq = new Map();
-      const push = (w) => { if (!w || !w.id || w.id === currentWord.id) return; uniq.set(String(w.id) + '::' + (w.word || w.ru || w.uk || ''), w); };
-
-      if (App.Mistakes && typeof App.Mistakes.list === 'function') {
-        const arr = App.Mistakes.list() || [];
-        for (let i = 0; i < arr.length; i++) push(arr[i]);
-      }
-      let srcKey = null;
-      try { srcKey = App.Mistakes && App.Mistakes.sourceKeyFor ? App.Mistakes.sourceKeyFor(currentWord.id) : null; } catch (e) {}
-      if (srcKey) {
-        const srcDeck = App.Decks.resolveDeckByKey(srcKey) || [];
-        for (let i = 0; i < srcDeck.length; i++) push(srcDeck[i]);
-      }
-      if (uniq.size < NEED) {
-        const keys = (App.Decks && App.Decks.builtinKeys) ? App.Decks.builtinKeys() : [];
-        for (let k of keys) {
-          const d = App.Decks.resolveDeckByKey(k) || [];
-          for (let i = 0; i < d.length; i++) push(d[i]);
-          if (uniq.size >= 20) break;
-        }
-      }
-      return Array.from(uniq.values());
-    } catch (e) { return []; }
-  }
-
-  // ────────────────────────────────────────────────────────────
-  // render card
   function renderCard(force = false) {
-    if (document.activeElement && document.activeElement.blur) {
-      try { document.activeElement.blur(); } catch (e) {}
-    }
+    if (document.activeElement && document.activeElement.blur) { try { document.activeElement.blur(); } catch (e) {} }
+    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
     const deck = getActiveDeck();
     if (!deck.length) {
-      if (App.dictRegistry.activeKey === 'mistakes') {
-        const t = App.i18n ? App.i18n() : null;
-        const msg = t && t.allMistakesDone ? t.allMistakesDone :
-          (App.settings && App.settings.lang === 'uk' ? 'Усі помилки закриті!' : 'Все ошибки закрыты!');
-        if (D.wordEl) D.wordEl.textContent = msg;
-        if (D.hintEl) D.hintEl.textContent = '—';
-        if (D.optionsRow) D.optionsRow.innerHTML = '';
-        setTimeout(() => {
-          App.dictRegistry.activeKey = App.Decks.pickDefaultKey();
-          App.saveDictRegistry && App.saveDictRegistry();
-          renderDictList();
-          App.renderSetsBar();
-          renderCard(true);
-          updateStats();
-        }, 900);
-        return;
-      } else {
+      if (key === 'mistakes') {
         if (D.wordEl) D.wordEl.textContent = '—';
         if (D.hintEl) D.hintEl.textContent = '—';
         if (D.optionsRow) D.optionsRow.innerHTML = '';
-        renderStars();
-        updateStats();
+        renderStars(); updateStats();
         return;
       }
+      if (D.wordEl) D.wordEl.textContent = '—';
+      if (D.hintEl) D.hintEl.textContent = '—';
+      if (D.optionsRow) D.optionsRow.innerHTML = '';
+      renderStars(); updateStats();
+      return;
     }
 
-    if (force || App.state.index === App.state.lastIndex) App.state.index = App.Trainer.sampleNextIndexWeighted(deck);
+    if (force || App.state.index === App.state.lastIndex) {
+      const b = App.Sets ? App.Sets.activeBounds() : { start: 0, end: deck.length };
+      const sub = deck.slice(b.start, b.end);
+      const picked = pickIndexWithFallback(sub, key);
+      if (picked >= 0) App.state.index = b.start + picked;
+    }
+
     const w = current();
     if (App.state.lastShownWordId !== w.id) {
       App.state.totals.shown += 1;
       App.state.lastShownWordId = w.id;
       App.state.lastSeen[w.id] = Date.now();
       App.saveState();
-try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+      // Не авто-адвансим в endless-словарях
+      if (!isEndlessDict(key)) {
+        try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+      }
     }
+
     const t = App.i18n();
     const isReverse = decideModeForWord(w);
 
     renderStars();
     D.optionsRow.innerHTML = '';
 
+    // Build pools with proper labels and dedup handled in drawOptions()
     if (!isReverse) {
       if (D.wordEl) D.wordEl.textContent = w.word;
       let poolWords;
-      if (App.dictRegistry.activeKey === 'mistakes') {
-        poolWords = getMistakesDistractorPool(w).map(x => (App.settings.lang === 'ru' ? x.ru : x.uk));
+      if (key === 'mistakes') {
+        poolWords = getMistakesDistractorPool(w)
+          .map(x => (App.settings.lang === 'ru') ? (x.ru || x.uk || x.translation || x.meaning) : (x.uk || x.ru || x.translation || x.meaning))
+          .filter(Boolean);
       } else {
-        poolWords = deck.filter(x => x.id !== w.id).map(x => (App.settings.lang === 'ru' ? x.ru : x.uk));
+        poolWords = deck.filter(x => x.id !== w.id)
+          .map(x => (App.settings.lang === 'ru') ? (x.ru || x.uk || x.translation || x.meaning) : (x.uk || x.ru || x.translation || x.meaning))
+          .filter(Boolean);
       }
-      const correct = (App.settings.lang === 'ru') ? w.ru : w.uk;
+      const correct = (App.settings.lang === 'ru') ? (w.ru || w.uk || w.translation || w.meaning || '') : (w.uk || w.ru || w.translation || w.meaning || '');
       drawOptions(correct, poolWords);
     } else {
-      if (D.wordEl) D.wordEl.textContent = (App.settings.lang === 'ru') ? w.ru : w.uk;
+      if (D.wordEl) D.wordEl.textContent = (App.settings.lang === 'ru') ? (w.ru || w.uk || w.translation || w.meaning || '') : (w.uk || w.ru || w.translation || w.meaning || '');
       let poolWords;
-      if (App.dictRegistry.activeKey === 'mistakes') {
-        poolWords = getMistakesDistractorPool(w).map(x => x.word);
+      if (key === 'mistakes') {
+        poolWords = getMistakesDistractorPool(w).map(x => x.word).filter(Boolean);
       } else {
-        poolWords = deck.filter(x => x.id !== w.id).map(x => x.word);
+        poolWords = deck.filter(x => x.id !== w.id).map(x => x.word).filter(Boolean);
       }
       const correct = w.word;
       drawOptions(correct, poolWords);
@@ -275,54 +324,67 @@ try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletion
     if (D.hintEl) D.hintEl.textContent = t.choose;
 
     if (D.favBtn) {
-      const dictKey = App.dictRegistry.activeKey;
+      // Сердечко неактивно в fav и mistakes
+      D.favBtn.disabled = (key === 'fav' || key === 'favorites' || key === 'mistakes');
+      const dictKey = (key === 'mistakes')
+        ? ((w && (w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)))) || 'mistakes')
+        : key;
       D.favBtn.textContent = (App.isFavorite && App.isFavorite(dictKey, w.id)) ? '♥' : '♡';
-      D.favBtn.disabled = (App.dictRegistry.activeKey === 'fav');
     }
 
     addIDontKnowButton();
     updateStats();
   }
 
-  // ────────────────────────────────────────────────────────────
-  // mistakes add helper (без самозаполнения)
+  // ─ add to mistakes with favorite priority ─
   function addToMistakesOnFailure(word) {
     if (!word) return;
     try {
-      if (App && App.dictRegistry && App.dictRegistry.activeKey === 'mistakes') return; // no self-adding
+      // приоритет избранного: если слово в избранном для своего sourceKey — не добавляем в МО
+      const sk = (word._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(word.id)) || (App.dictRegistry && App.dictRegistry.activeKey));
+      if (App.isFavorite && App.isFavorite(sk, word.id)) return;
+
+      const active = (App && App.dictRegistry && App.dictRegistry.activeKey) || null;
+      let sourceKey;
+      if (active === 'mistakes') {
+        sourceKey = sk || 'mistakes';
+      } else {
+        sourceKey = active;
+      }
       if (App && App.Mistakes && typeof App.Mistakes.add === 'function') {
-        const dictKey = (App.dictRegistry && App.dictRegistry.activeKey) || null;
-        App.Mistakes.add(String(word.id), word, dictKey);
+        App.Mistakes.add(String(word.id), word, sourceKey);
       }
     } catch (e) {}
   }
 
-  // ────────────────────────────────────────────────────────────
-  // answers
+  // ─ answers ─
   function onChoice(btn, correct) {
     const w = current();
-    const cur = App.clamp(App.state.stars[w.id] || 0, 0, App.Trainer.starsMax());
+    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const max = App.Trainer.starsMax();
 
     if (correct) {
       btn.classList.add('correct');
       D.optionsRow.querySelectorAll('button.optionBtn').forEach(b => b.disabled = true);
-      App.state.stars[w.id] = App.clamp(cur + 1, 0, App.Trainer.starsMax());
-      App.state.successes[w.id] = (App.state.successes[w.id] || 0) + 1;
+
+      if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+        const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+        const cur = App.Mistakes.getStars(sk, w.id) || 0;
+        App.Mistakes.setStars(sk, w.id, Math.max(0, Math.min(max, cur+1)));
+      } else {
+        const cur = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
+        App.state.stars[w.id] = Math.max(0, Math.min(max, cur+1));
+        App.state.successes[w.id] = (App.state.successes[w.id] || 0) + 1;
+      }
+
       App.saveState();
-try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+      if (!isEndlessDict(key)) {
+        try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+      }
       renderStars();
       updateStats();
 
-      // milestones: learned 10/20/30...
-      try {
-        const repeats = App.Trainer.starsMax();
-        let learned = 0;
-        const all = (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey) || []);
-        for (let i = 0; i < all.length; i++) if ((App.state.stars[all[i].id] || 0) >= repeats) learned++;
-        if (learned > 0 && learned % 10 === 0 && App.Milestones && App.Milestones.tryShow) {
-          App.Milestones.tryShow('learned', { count: learned });
-        }
-      } catch (e) {}
+      // milestones only "learned" left as-is — не трогаем
 
       setTimeout(nextWord, 500);
       return;
@@ -331,15 +393,28 @@ try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletion
     // wrong
     btn.classList.add('wrong');
     btn.disabled = true;
-    App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
+
+    if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+      const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+      const cur = App.Mistakes.getStars(sk, w.id) || 0;
+      App.Mistakes.setStars(sk, w.id, Math.max(0, Math.min(max, cur-1)));
+    } else {
+      const cur = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
+      App.state.stars[w.id] = Math.max(0, Math.min(max, cur-1));
+    }
+
     App.state.totals.errors += 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
-   // if (App.state.totals.sessionErrors % 5 === 0 && App.Milestones && App.Milestones.tryShow) {
-   //   App.Milestones.tryShow('errors', { count: App.state.totals.sessionErrors });
-   // }
-    addToMistakesOnFailure(w);
+
+    // приоритет избранного: если слово уже в избранном — не добавляем в МО
+    if (!(App.isFavorite && App.isFavorite((w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)) || (App.dictRegistry && App.dictRegistry.activeKey)), w.id))) {
+      addToMistakesOnFailure(w);
+    }
+
     App.saveState();
-try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+    if (!isEndlessDict(key)) {
+      try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+    }
     renderStars();
     updateStats();
   }
@@ -349,26 +424,36 @@ try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletion
     const c = D.optionsRow.querySelector('button.optionBtn[data-correct="1"]');
     if (c) c.classList.add('correct');
     D.optionsRow.querySelectorAll('button.optionBtn').forEach(b => b.disabled = true);
-    const cur = App.clamp(App.state.stars[w.id] || 0, 0, App.Trainer.starsMax());
-    App.state.stars[w.id] = App.clamp(cur - 1, 0, App.Trainer.starsMax());
+    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    const max = App.Trainer.starsMax();
+
+    if (key === 'mistakes' && App.Mistakes && App.Mistakes.getStars){
+      const sk = w._mistakeSourceKey || (App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id));
+      const cur = App.Mistakes.getStars(sk, w.id) || 0;
+      App.Mistakes.setStars(sk, w.id, Math.max(0, Math.min(max, cur-1)));
+    } else {
+      const cur = Math.max(0, Math.min(max, App.state.stars[w.id] || 0));
+      App.state.stars[w.id] = Math.max(0, Math.min(max, cur-1));
+    }
+
     App.state.totals.errors += 1;
     App.state.totals.sessionErrors = (App.state.totals.sessionErrors || 0) + 1;
-    if (App.state.totals.sessionErrors % 5 === 0 && App.Milestones && App.Milestones.tryShow) {
-      App.Milestones.tryShow('errors', { count: App.state.totals.sessionErrors });
+
+    // приоритет избранного: если слово в избранном — не добавляем в МО
+    if (!(App.isFavorite && App.isFavorite((w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)) || (App.dictRegistry && App.dictRegistry.activeKey)), w.id))) {
+      addToMistakesOnFailure(w);
     }
-    addToMistakesOnFailure(w);
+
     App.saveState();
-try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+    if (!isEndlessDict(key)) {
+      try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
+    }
     renderStars();
     updateStats();
-    setTimeout(function () {
-      App.Sets.checkCompletionAndAdvance();
-      nextWord();
-    }, 700);
+    setTimeout(function () { nextWord(); }, 700);
   }
 
-  // ────────────────────────────────────────────────────────────
-  // sets bar
+  // ─ sets bar ─
   App.renderSetsBar = function () {
     const host = document.getElementById('setsBar');
     if (!host) return;
@@ -392,121 +477,79 @@ try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletion
     renderSetStats();
   };
 
-  
-  
-  const FLAG_EMOJI = { ru:'🇷🇺', uk:'🇺🇦', en:'🇬🇧', de:'🇩🇪', es:'🇪🇸', fr:'🇫🇷', it:'🇮🇹', pl:'🇵🇱', sr:'🇷🇸', tr:'🇹🇷' };
-  App.renderLangFlags = function(){
-    if (!D.langFlags) return;
-    // Собираем доступные языки из ключей словарей
-    const set = new Set();
-    try {
-      const keys = (App.Decks && typeof App.Decks.builtinKeys === 'function')
-        ? App.Decks.builtinKeys()
-        : Object.keys(window.decks || {});
-      keys.forEach(k => {
-        const m = String(k||'').match(/^([a-z]{2})_/i);
-        const lg = m ? m[1].toLowerCase() : null;
-        if (lg) set.add(lg);
-      });
-    } catch(_) {}
-    const langs = Array.from(set);
-    D.langFlags.innerHTML = '';
-    if (!langs.length) return;
-    const active = App.settings.dictsLangFilter || null;
-    langs.forEach(lg => {
-      const b = document.createElement('button');
-      b.className = 'flagBtn' + ((active===lg)?' active':'');
-      b.title = (App.i18n()['lang_'+lg] || lg.toUpperCase());
-      b.textContent = FLAG_EMOJI[lg] || lg.toUpperCase();
-      b.addEventListener('click', () => {
-        App.settings.dictsLangFilter = lg;
-        App.saveSettings && App.saveSettings(App.settings);
-        renderDictList();
-        App.renderLangFlags();
-      });
-      D.langFlags.appendChild(b);
-    });
-  };
-App.switchToSetImmediate = function () {
-    
-  try { if (App.renderSetsBar) App.renderSetsBar(); } catch(e){} 
-const b = App.Sets.activeBounds();
+  App.switchToSetImmediate = function () {
+    const b = App.Sets.activeBounds();
     if (App.state.index < b.start || App.state.index >= b.end) App.state.index = b.start;
     renderCard(true);
     renderSetStats();
     App.saveState && App.saveState();
-try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletionAndAdvance(); }catch(e){}
   };
 
-  // ────────────────────────────────────────────────────────────
-  // milestones module (throttled modal)
-  App.Milestones = App.Milestones || {};
-  (function (M) {
-    const LS = 'milestone.state.v1';
-    const DEF = { lastShownAt: 0, shownBadges: {} };
-    function load() {
-      try { return Object.assign({}, DEF, JSON.parse(localStorage.getItem(LS) || '{}')); }
-      catch (e) { return { ...DEF }; }
-    }
-    function save(s) { try { localStorage.setItem(LS, JSON.stringify(s)); } catch (e) {} }
-    const S = load();
-
-    M.tryShow = function (type, payload) {
-      const now = Date.now();
-      if (now - (S.lastShownAt || 0) < 120000) return; // 2 min
-      const modal = document.getElementById('milestoneModal'); if (!modal) return;
-      const title = document.getElementById('milestoneTitle');
-      const text = document.getElementById('milestoneText');
-      const ok = document.getElementById('milestoneOk');
-      const t = (App.i18n && App.i18n()) || {};
-
-      if (type === 'learned') {
-        const n = (payload && payload.count) || 0;
-        const k = 'learned:' + n;
-        if (S.shownBadges[k]) return;
-        title.textContent = '🎉';
-        text.textContent = (t.milestoneLearned || 'Вы выучили {n} слов!').replace('{n}', n);
-        S.shownBadges[k] = true;
-      } else if (type === 'errors') {
-        const n = (payload && payload.count) || 0;
-        const k = 'errors:' + n;
-        if (S.shownBadges[k]) return;
-        title.textContent = '💪';
-        text.textContent = (t.milestoneErrors || '5 ошибок — не сдаёмся!').replace('{n}', n);
-        S.shownBadges[k] = true;
-      } else {
-        return;
-      }
-
-      modal.classList.remove('hidden');
-      ok.onclick = () => { modal.classList.add('hidden'); };
-      S.lastShownAt = now; save(S);
-    };
-  })(App.Milestones);
-
-  // ────────────────────────────────────────────────────────────
-  // navigation
+  // ─ navigation ─
   function nextWord() {
     App.state.lastIndex = App.state.index;
+    const key = (App.dictRegistry && App.dictRegistry.activeKey) || null;
     const b = App.Sets ? App.Sets.activeBounds() : { start: 0, end: getActiveDeck().length };
-    const sub = (App.Decks.resolveDeckByKey(App.dictRegistry.activeKey) || []).slice(b.start, b.end);
-    App.state.index = b.start + App.Trainer.sampleNextIndexWeighted(sub);
+    const full = (App.Decks.resolveDeckByKey(key) || []);
+    const sub = full.slice(b.start, b.end);
+    if (!sub.length) { renderCard(true); return; }
+    const picked = pickIndexWithFallback(sub, key);
+    if (picked < 0) { renderCard(true); return; }
+    App.state.index = b.start + picked;
     renderCard(true);
   }
 
-  // ────────────────────────────────────────────────────────────
-  // favorites
+  // ─ favorites ─
   function toggleFav() {
     const w = current();
-    const dictKey = App.dictRegistry.activeKey;
+    const activeKey = (App.dictRegistry && App.dictRegistry.activeKey) || null;
+    // Если мы в mistakes — используем sourceKey слова, а не 'mistakes'
+    const dictKey = (activeKey === 'mistakes')
+      ? ((w && (w._mistakeSourceKey || (App.Mistakes && App.Mistakes.sourceKeyFor && App.Mistakes.sourceKeyFor(w.id)))) || 'mistakes')
+      : activeKey;
+
     App.toggleFavorite && App.toggleFavorite(dictKey, w.id);
     if (D.favBtn) {
       D.favBtn.textContent = (App.isFavorite && App.isFavorite(dictKey, w.id)) ? '♥' : '♡';
       D.favBtn.style.transform = 'scale(1.2)';
       setTimeout(() => { D.favBtn.style.transform = 'scale(1)'; }, 140);
     }
-    renderDictList();
-    App.renderSetsBar();
+    // Перерисовать списки — так появится/обновится «Избранное»
+    if (typeof App.renderSetsBar === 'function') App.renderSetsBar();
+  }
+
+  // ─ dicts list, flags, bootstrap etc. (минимальные изменения) ─
+  function renderDictList() {
+    const host = D.dictListHost;
+    if (!host) return;
+    host.innerHTML = '';
+
+    (function appendMistakesRowFirst() {
+      try {
+        const row = makeDictRow('mistakes');
+        if (!row) return;
+        host.appendChild(row);
+        let cnt = 0;
+        if (App.Mistakes && typeof App.Mistakes.count === 'function') cnt = App.Mistakes.count();
+        if (cnt < 4) {
+          row.classList.add('disabled');
+          row.setAttribute('aria-disabled', 'true');
+        }
+      } catch (e) {}
+    })();
+
+    if (canShowFav()) host.appendChild(makeDictRow('fav'));
+
+    (function(){
+      const all = App.Decks.builtinKeys();
+      const lg = (App.settings && App.settings.dictsLangFilter) || null;
+      let keys = all;
+      if (lg) keys = all.filter(k => keyLang(k) === lg);
+      keys = _sortKeysByCategory(keys);
+      keys.forEach(k => host.appendChild(makeDictRow(k)));
+    })();
+
+    for (const k of Object.keys(App.dictRegistry.user || {})) host.appendChild(makeDictRow(k));
   }
 
   function canShowFav() {
@@ -534,6 +577,8 @@ try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletion
     if (key === 'mistakes') {
       const t = (typeof App.i18n === 'function') ? App.i18n() : null;
       name.textContent = (t && t.mistakesName) ? t.mistakesName : 'Мои ошибки';
+    } else if (key === 'fav' || key === 'favorites') {
+      name.textContent = (App.settings.lang === 'ru') ? 'Избранное' : 'Обране';
     } else {
       name.textContent = App.Decks.resolveNameByKey(key);
     }
@@ -589,21 +634,8 @@ try{ if(App.Sets && App.Sets.checkCompletionAndAdvance) App.Sets.checkCompletion
       if (row.classList.contains('disabled')) return;
       App.dictRegistry.activeKey = key;
       App.saveDictRegistry();
-      
-    // Special case for "My mistakes": stay in dictionary even if empty
-    if (key === 'mistakes') {
-      try {
-        if (App.Trainer && typeof App.Trainer.setBatchIndex === 'function') {
-          App.Trainer.setBatchIndex('mistakes', 0);
-        }
-      } catch(e){}
-      renderDictList();
-      if (App.renderSetsBar) App.renderSetsBar();
-      renderCard(true);
-      updateStats();
-      return;
-    }
-App.state.index = 0;
+
+      App.state.index = 0;
       App.state.lastIndex = -1;
       renderDictList();
       App.renderSetsBar();
@@ -614,54 +646,40 @@ App.state.index = 0;
     return row;
   }
 
-  function renderDictList() {
-    const host = D.dictListHost;
-    if (!host) return;
-    host.innerHTML = '';
+  const FLAG_EMOJI = { ru:'🇷🇺', uk:'🇺🇦', en:'🇬🇧', de:'🇩🇪', es:'🇪🇸', fr:'🇫🇷', it:'🇮🇹', pl:'🇵🇱', sr:'🇷🇸', tr:'🇹🇷' };
+  App.renderLangFlags = function(){
+    if (!D.langFlags) return;
+    const set = new Set();
+    try {
+      const keys = (App.Decks && typeof App.Decks.builtinKeys === 'function')
+        ? App.Decks.builtinKeys()
+        : Object.keys(window.decks || {});
+      keys.forEach(k => {
+        const m = String(k||'').match(/^([a-z]{2})_/i);
+        const lg = m ? m[1].toLowerCase() : null;
+        if (lg) set.add(lg);
+      });
+    } catch(_) {}
+    const langs = Array.from(set);
+    D.langFlags.innerHTML = '';
+    if (!langs.length) return;
+    const active = App.settings.dictsLangFilter || null;
+    langs.forEach(lg => {
+      const b = document.createElement('button');
+      b.className = 'flagBtn' + ((active===lg)?' active':'');
+      b.title = (App.i18n()['lang_'+lg] || lg.toUpperCase());
+      b.textContent = FLAG_EMOJI[lg] || lg.toUpperCase();
+      b.addEventListener('click', () => {
+        App.settings.dictsLangFilter = lg;
+        App.saveSettings && App.saveSettings(App.settings);
+        renderDictList();
+        App.renderLangFlags();
+      });
+      D.langFlags.appendChild(b);
+    });
+  };
 
-    (function appendMistakesRowFirst() {
-      try {
-        const row = makeDictRow('mistakes');
-        if (!row) return;
-        host.appendChild(row);
-        let cnt = 0;
-        if (App.Mistakes && typeof App.Mistakes.count === 'function') cnt = App.Mistakes.count();
-        if (cnt < 4) {
-          row.classList.add('disabled');
-          row.setAttribute('aria-disabled', 'true');
-          row.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            try {
-              const t = (typeof App.i18n === 'function') ? App.i18n() : null;
-              const msg = t && t.needMoreMistakes
-                ? t.needMoreMistakes.replace('{n}', String(4 - cnt))
-                : 'Добавьте ещё ' + (4 - cnt) + ' слов с ошибками для активации';
-              const box = document.getElementById('motivationBox');
-              if (box) { box.textContent = msg; }
-            } catch (_) {}
-          }, { capture: true });
-        }
-      } catch (e) {}
-    })();
-
-    if (canShowFav()) host.appendChild(makeDictRow('fav'));
-    
-    // filter builtin keys by selected language (if any) and sort by unified category order
-    (function(){
-      const all = App.Decks.builtinKeys();
-      const lg = (App.settings && App.settings.dictsLangFilter) || null;
-      let keys = all;
-      if (lg) keys = all.filter(k => keyLang(k) === lg);
-      keys = _sortKeysByCategory(keys);
-      keys.forEach(k => host.appendChild(makeDictRow(k)));
-    })();
-
-    for (const k of Object.keys(App.dictRegistry.user || {})) host.appendChild(makeDictRow(k));
-  }
-
-  // ────────────────────────────────────────────────────────────
-  // bootstrap & bindings
+  // bootstrap/bindings
   const _origBootstrap = App.bootstrap || function(){};
   App.bootstrap = function () {
     _origBootstrap();
@@ -669,11 +687,9 @@ App.state.index = 0;
     App.state.totals.sessionErrors = 0;
 
     if (!App.dictRegistry.activeKey) { App.dictRegistry.activeKey = App.Decks.pickDefaultKey(); App.saveDictRegistry(); }
-    try { App.migrateFavoritesToV2 && App.migrateFavoritesToV2(); } catch (e) {}
 
     applyLang();
-    App.applyTheme();
-    App.scheduleThemeTick && App.scheduleThemeTick();
+    App.applyTheme && App.applyTheme();
     bindHeaderButtons();
     renderCard(true);
   };
@@ -685,7 +701,7 @@ App.state.index = 0;
     if (D.taglineEl) D.taglineEl.textContent = t.tagline || '';
     if (D.dictsBtn) D.dictsBtn.title = t.dictsHeader || 'Словари';
     renderDictList();
-    App.renderSetsBar();
+    App.renderSetsBar && App.renderSetsBar();
     updateStats();
   }
 
@@ -699,7 +715,7 @@ App.state.index = 0;
         D.langToggleBtn.textContent = (App.settings.lang === 'ru') ? '🇷🇺' : '🇺🇦';
         App.saveSettings(App.settings);
         applyLang();
-        App.applyTheme();
+        App.applyTheme && App.applyTheme();
         renderCard(true);
       });
     }
@@ -713,7 +729,7 @@ App.state.index = 0;
         const next = (cur === 'dark') ? 'light' : 'dark';
         App.settings.theme = next;
         App.saveSettings(App.settings);
-        App.applyTheme();
+        App.applyTheme && App.applyTheme();
         updateIcon();
       });
       updateIcon();
@@ -723,197 +739,4 @@ App.state.index = 0;
     if (D.backdrop) { D.backdrop.addEventListener('click', () => { closeModal(); }); }
     if (D.favBtn) { D.favBtn.addEventListener('click', toggleFav); }
   }
-
 })();
-
-
-  // Bind extra actions (Info & Donate)
-  (function(){
-    const infoBtn = document.getElementById('btnInfo');
-    const donateBtn = document.getElementById('btnDonate');
-    const modal = document.getElementById('infoModal');
-    const titleEl = document.getElementById('infoTitle');
-    const contentEl = document.getElementById('infoContent');
-    const closeEl = document.getElementById('infoClose');
-
-    function i18nText(){
-      const t = (typeof App.i18n === 'function') ? App.i18n() : {};
-      const ru = {
-        infoTitle: 'Как пользоваться',
-        infoIntro: 'Короткая инструкция для быстрого старта:',
-        infoList: [
-          'Откройте список словарей (кнопка с книгой в шапке) и выберите нужный.',
-          'Выберите набор — плитки под заголовком (каждый по 50 слов).',
-          'На карточке нажимайте правильный перевод. «Не знаю» честно помечает слово как сложное.',
-          'Звезды показывают прогресс слова: чем больше, тем реже слово попадается.',
-          'Готовый набор подсвечивается; активный — в рамке. После последнего начинается первый.',
-          'Прогресс и настройки сохраняются в вашем браузере.'
-        ],
-        ok: 'Закрыть',
-        donateSoon: 'Скоро: донат-страница'
-      };
-      const uk = {
-        infoTitle: 'Як користуватися',
-        infoIntro: 'Коротка інструкція для швидкого старту:',
-        infoList: [
-          'Відкрийте список словників (кнопка з книжкою у шапці) і оберіть потрібний.',
-          'Оберіть набір — плитки під заголовком (кожен по 50 слів).',
-          'На картці натискайте правильний переклад. «Не знаю» чесно позначає слово як складне.',
-          'Зірочки показують прогрес слова: що їх більше, то рідше слово трапляється.',
-          'Готовий набір підсвічується; активний — у рамці. Після останнього починається перший.',
-          'Прогресс і налаштування зберігаються у вашому браузері.'
-        ],
-        ok: 'Закрити',
-        donateSoon: 'Скоро: сторінка донату'
-      };
-      const lang = (App.settings && App.settings.lang) || 'ru';
-      return (lang === 'uk') ? uk : ru;
-    }
-
-    function openInfo(){
-      const t = i18nText();
-      if (titleEl) titleEl.textContent = t.infoTitle;
-      if (contentEl){
-        contentEl.innerHTML = '';
-        const p = document.createElement('p'); p.textContent = t.infoIntro; contentEl.appendChild(p);
-        const ul = document.createElement('ul');
-        t.infoList.forEach(x => { const li=document.createElement('li'); li.textContent = x; ul.appendChild(li); });
-        contentEl.appendChild(ul);
-      }
-      if (modal) modal.classList.remove('hidden');
-    }
-    function closeInfo(){ if (modal) modal.classList.add('hidden'); }
-
-    infoBtn && infoBtn.addEventListener('click', openInfo);
-    closeEl && closeEl.addEventListener('click', closeInfo);
-    modal && modal.addEventListener('click', (e)=>{ if (e.target===modal) closeInfo(); });
-
-    // ⬇️ УДАЛЕНО: прежний обработчик клика доната с alert, чтобы не мешал переходу по ссылке
-    // donateBtn && donateBtn.addEventListener('click', ()=>{
-    //   const t = i18nText();
-    //   alert(t.donateSoon);
-    // });
-    // ⬆️ Теперь <a id="btnDonate" href="..."> работает нативно без перехвата клика.
-  })();
-
-// === Safe addons: i18n-driven Info content + flag injection (no overrides) ===
-(function(){
-  function safeI18n(){
-    try{ return (window.App && typeof App.i18n==='function') ? (App.i18n()||{}) : {}; }catch(e){ return {}; }
-  }
-  function fillInfoFromI18n(){
-    var t = safeI18n();
-    var title = t.infoTitle;
-    var steps = Array.isArray(t.infoSteps) ? t.infoSteps : null;
-    if (!title && !steps) return;
-    var titleEl = document.getElementById('infoTitle');
-    var contentEl = document.getElementById('infoContent');
-    if (titleEl && title) titleEl.textContent = title;
-    if (contentEl && steps){
-      contentEl.innerHTML = '';
-      var ul = document.createElement('ul');
-      steps.forEach(function(s){ var li=document.createElement('li'); li.textContent = s; ul.appendChild(li); });
-      contentEl.appendChild(ul);
-    }
-  }
-  function wireInfoButton(){
-    var btn = document.getElementById('btnInfo');
-    if (!btn || btn._lexiBoundInfo) return;
-    btn._lexiBoundInfo = true;
-    btn.addEventListener('click', function(){ fillInfoFromI18n(); }, { passive:true });
-  }
-  function updateDictFlag(){
-    var titleEl = document.getElementById('dictActiveTitle');
-    if (!titleEl) return;
-    var key = (window.App && App.dictRegistry && App.dictRegistry.activeKey) || null;
-    if (!key || !(window.App && App.Decks && typeof App.Decks.flagForKey==='function')) return;
-    var flag = App.Decks.flagForKey(key) || '';
-    var span = titleEl.querySelector('.dictFlag');
-    titleEl._lexiUpdating = true;
-    try{
-      if (flag){
-        if (!span){
-          span = document.createElement('span'); span.className = 'dictFlag';
-          titleEl.insertBefore(span, titleEl.firstChild);
-          if (span.nextSibling && span.nextSibling.nodeType===3 && /^\S/.test(span.nextSibling.textContent)){
-            titleEl.insertBefore(document.createTextNode(' '), span.nextSibling);
-          }
-        }
-        if (span.textContent !== flag) span.textContent = flag;
-      } else if (span){
-        span.remove();
-      }
-    } finally { titleEl._lexiUpdating = false; }
-  }
-  function observeTitle(){
-    var el = document.getElementById('dictActiveTitle');
-    if (!el || el._lexiObserved) return;
-    el._lexiObserved = true;
-    var mo = new MutationObserver(function(){
-      if (el._lexiUpdating) return;
-      updateDictFlag();
-    });
-    mo.observe(el, { childList:true, subtree:true });
-    updateDictFlag();
-  }
-  function reapplyAll(){
-    wireInfoButton();
-    observeTitle();
-  }
-  document.addEventListener('click', function(e){
-    var t = e.target;
-    if (!t) return;
-    if (t.closest && (t.closest('#dictsModal') || t.closest('.setsBar') || t.closest('.langFlags'))){
-      setTimeout(updateDictFlag, 0);
-    }
-    if (t.id === 'btnInfo') { setTimeout(fillInfoFromI18n, 0); }
-  }, true);
-  if (document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', reapplyAll);
-  } else {
-    reapplyAll();
-  }
-
-try{ App.renderCard = renderCard; App.renderSetStats = renderSetStats; }catch(e){}
-})();
-
-// VISUAL FIX v2: disable '5 mistakes' modal and hide activation hints
-try{
-  window.App = window.App || {};
-  App.UI = App.UI || {};
-  if (typeof App.UI.showMistakesModal === 'function'){
-    App.UI.showMistakesModal = function(){ /* disabled */ };
-  }
-}catch(e){}
-
-(function(){
-  function hideActivationHints(){
-    try{
-      var nodes = document.querySelectorAll('body *');
-      for (var i=0;i<nodes.length;i++){
-        var t = (nodes[i].textContent||'').trim().toLowerCase();
-        if (!t) continue;
-        if (/додайте\s+ще\s+4\s+сл/iu.test(t) || /добавьте\s+ещ|е\s+4\s+сл/iu.test(t)){
-          nodes[i].style.display = 'none';
-        }
-        if (/ошибк|помилк/iu.test(t) && /5/iu.test(t) && /актив/iu.test(t)){
-          nodes[i].style.display = 'none';
-        }
-      }
-      // Hide any modal that contains mistake-related content
-      var modals = document.querySelectorAll('.modal, [role="dialog"]');
-      for (var j=0;j<modals.length;j++){
-        var tt = (modals[j].textContent||'').toLowerCase();
-        if (/ошибк|помилк/iu.test(tt)){
-          modals[j].style.display = 'none';
-        }
-      }
-    }catch(e){}
-  }
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', hideActivationHints, {once:true});
-  }else{
-    hideActivationHints();
-  }
-})();
-
